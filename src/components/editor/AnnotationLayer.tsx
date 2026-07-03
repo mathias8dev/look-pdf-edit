@@ -487,6 +487,7 @@ function ImageNode({
       y={r.y}
       width={r.w}
       height={r.h}
+      opacity={a.opacity ?? 1}
       onDragEnd={(e) => commit(e.target as Konva.Image)}
       onTransformEnd={(e) => commit(e.target as Konva.Image)}
     />

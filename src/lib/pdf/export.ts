@@ -165,7 +165,15 @@ async function drawAnnotation(
     }
     case "image": {
       const img = await embedDataUrl(doc, a.dataUrl);
-      if (img) page.drawImage(img, { x: a.x, y: a.y, width: a.w, height: a.h });
+      if (img) {
+        page.drawImage(img, {
+          x: a.x,
+          y: a.y,
+          width: a.w,
+          height: a.h,
+          opacity: a.opacity ?? 1,
+        });
+      }
       return;
     }
   }

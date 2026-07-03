@@ -99,7 +99,7 @@ describe("buildEditedPdf with annotations", () => {
       { id: "r", pageId: "p0", kind: "rect", x: 10, y: 10, w: 40, h: 30, color: "#22ff00", strokeWidth: 2 },
       { id: "h", pageId: "p0", kind: "highlight", x: 5, y: 5, w: 60, h: 20, color: "#ffff00", opacity: 0.4 },
       { id: "d", pageId: "p0", kind: "draw", points: [0, 0, 10, 10, 20, 5], color: "#0000ff", strokeWidth: 3 },
-      { id: "i", pageId: "p0", kind: "image", x: 0, y: 0, w: 20, h: 20, dataUrl: PNG_1PX },
+      { id: "i", pageId: "p0", kind: "image", x: 0, y: 0, w: 20, h: 20, dataUrl: PNG_1PX, opacity: 0.5 },
     ];
     const out = await buildEditedPdf({ [DOC]: src }, [page("p0", 0)], anns);
     const reloaded = await PDFDocument.load(out);

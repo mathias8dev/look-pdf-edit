@@ -92,6 +92,8 @@ export interface ImageAnnotation extends AnnotationBase {
   h: number;
   /** data:image/png|jpeg;base64,… */
   dataUrl: string;
+  /** 0..1; defaults to 1 (opaque) when absent. */
+  opacity?: number;
 }
 
 export type Annotation =

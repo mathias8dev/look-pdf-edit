@@ -13,7 +13,7 @@ import PageCanvas from "./PageCanvas";
 import SignatureDialog from "./SignatureDialog";
 import FormPanel from "./FormPanel";
 import ObjectsPanel from "./ObjectsPanel";
-import TextPanel from "./TextPanel";
+import PropertiesPanel from "./PropertiesPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Konva is browser-only (touches window/canvas at module load), so the overlay
@@ -43,12 +43,11 @@ export default function Editor() {
   const selectedAnnotationIds = useEditorStore((s) => s.selectedAnnotationIds);
   const selectAnnotation = useEditorStore((s) => s.selectAnnotation);
 
-  // A single selected text object drives the text-properties panel.
+  // A single selected object drives the properties panel.
   const soleSelected =
     selectedAnnotationIds.length === 1
       ? annotations.find((x) => x.id === selectedAnnotationIds[0])
       : undefined;
-  const selectedText = soleSelected?.kind === "text" ? soleSelected : undefined;
 
   const selected = pages.find((p) => p.id === selectedId);
   // The source document the selected page belongs to (assembly can mix docs).
@@ -143,8 +142,8 @@ export default function Editor() {
             <Uploader onFile={handleFile} />
           )}
         </main>
-        {selectedText && (
-          <TextPanel annotation={selectedText} onClose={() => selectAnnotation(null)} />
+        {soleSelected && (
+          <PropertiesPanel annotation={soleSelected} onClose={() => selectAnnotation(null)} />
         )}
         {showObjects && selected && (
           <ObjectsPanel pageId={selected.id} onClose={() => setObjectsOpen(false)} />
