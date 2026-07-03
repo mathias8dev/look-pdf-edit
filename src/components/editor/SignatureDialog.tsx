@@ -1,10 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { X, Eraser } from "lucide-react";
+import { Eraser } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor-store";
 import { nextId } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogFooter,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
 
 type Tab = "draw" | "type" | "upload";
 
@@ -60,106 +69,79 @@ export default function SignatureDialog({ pageId, pageSize, onClose }: Props) {
   }
 
   const canConfirm =
+    tab === "draw" ||
     (tab === "type" && typed.trim().length > 0) ||
-    (tab === "upload" && !!uploaded) ||
-    tab === "draw";
+    (tab === "upload" && !!uploaded);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-      <div className="w-full max-w-lg rounded-xl border border-neutral-700 bg-neutral-900 shadow-2xl">
-        <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-          <h2 className="text-sm font-semibold text-neutral-100">Add signature</h2>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
-        </div>
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add signature</DialogTitle>
+        </DialogHeader>
 
-        <div className="flex gap-1 border-b border-neutral-800 px-4 pt-3">
-          {(["draw", "type", "upload"] as Tab[]).map((t) => (
-            <button
-              key={t}
-              type="button"
-              onClick={() => setTab(t)}
-              className={cn(
-                "rounded-t-md px-3 py-1.5 text-sm capitalize",
-                tab === t
-                  ? "bg-neutral-800 text-neutral-100"
-                  : "text-neutral-400 hover:text-neutral-200",
-              )}
-            >
-              {t}
-            </button>
-          ))}
-        </div>
+        <div className="px-4">
+          <Tabs value={tab} onValueChange={(v) => setTab(v as Tab)}>
+            <TabsList>
+              <TabsTrigger value="draw">draw</TabsTrigger>
+              <TabsTrigger value="type">type</TabsTrigger>
+              <TabsTrigger value="upload">upload</TabsTrigger>
+            </TabsList>
 
-        <div className="p-4">
-          {tab === "draw" && <DrawPad canvasRef={drawRef} />}
-          {tab === "type" && (
-            <div className="space-y-3">
-              <input
-                autoFocus
-                value={typed}
-                onChange={(e) => setTyped(e.target.value)}
-                placeholder="Type your name"
-                className="w-full rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-blue-500"
-              />
-              <div className="flex h-24 items-center justify-center rounded-md bg-white">
-                <span
-                  className="text-4xl text-black"
-                  style={{ fontFamily: SIGNATURE_FONT }}
-                >
-                  {typed || "Preview"}
-                </span>
-              </div>
-            </div>
-          )}
-          {tab === "upload" && (
-            <div className="space-y-3">
-              <input
-                type="file"
-                accept="image/png,image/jpeg"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  const reader = new FileReader();
-                  reader.onload = () => setUploaded(String(reader.result));
-                  reader.readAsDataURL(file);
-                }}
-                className="block w-full text-sm text-neutral-300 file:mr-3 file:rounded-md file:border-0 file:bg-neutral-800 file:px-3 file:py-1.5 file:text-neutral-100"
-              />
-              {uploaded && (
-                <div className="flex justify-center rounded-md bg-white p-3">
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={uploaded} alt="Signature preview" className="max-h-28" />
+            <TabsContent value="draw">
+              <DrawPad canvasRef={drawRef} />
+            </TabsContent>
+
+            <TabsContent value="type">
+              <div className="space-y-3">
+                <Input
+                  autoFocus
+                  value={typed}
+                  onChange={(e) => setTyped(e.target.value)}
+                  placeholder="Type your name"
+                />
+                <div className="flex h-24 items-center justify-center rounded-md bg-white">
+                  <span className="text-4xl text-black" style={{ fontFamily: SIGNATURE_FONT }}>
+                    {typed || "Preview"}
+                  </span>
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="upload">
+              <div className="space-y-3">
+                <Input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = () => setUploaded(String(reader.result));
+                    reader.readAsDataURL(file);
+                  }}
+                />
+                {uploaded && (
+                  <div className="flex justify-center rounded-md bg-white p-3">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={uploaded} alt="Signature preview" className="max-h-28" />
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
-        <div className="flex justify-end gap-2 border-t border-neutral-800 px-4 py-3">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
-          >
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={confirm}
-            disabled={!canConfirm}
-            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={confirm} disabled={!canConfirm}>
             Add
-          </button>
-        </div>
-      </div>
-    </div>
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -209,17 +191,17 @@ function DrawPad({ canvasRef }: { canvasRef: React.RefObject<HTMLCanvasElement |
         }}
         onPointerUp={() => (drawing.current = false)}
       />
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
         onClick={() => {
           const c = canvasRef.current;
           c?.getContext("2d")?.clearRect(0, 0, c.width, c.height);
         }}
-        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
       >
-        <Eraser className="h-3.5 w-3.5" />
+        <Eraser className="size-3.5" />
         Clear
-      </button>
+      </Button>
     </div>
   );
 }

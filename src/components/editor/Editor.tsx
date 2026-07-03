@@ -12,6 +12,7 @@ import Thumbnails from "./Thumbnails";
 import PageCanvas from "./PageCanvas";
 import SignatureDialog from "./SignatureDialog";
 import FormPanel from "./FormPanel";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Konva is browser-only (touches window/canvas at module load), so the overlay
 // must never render on the server. See lazy-loading.md: ssr:false requires a
@@ -77,7 +78,8 @@ export default function Editor() {
   const showForm = formOpen && formFields.length > 0 && !!selectedSource;
 
   return (
-    <div className="flex h-dvh flex-col bg-neutral-900 text-neutral-100">
+    <TooltipProvider>
+    <div className="flex h-dvh flex-col bg-background text-foreground">
       <Toolbar
         hasForm={formFields.length > 0}
         formOpen={formOpen}
@@ -87,14 +89,14 @@ export default function Editor() {
         {hasDoc && <Thumbnails />}
         <main className="min-h-0 flex-1 overflow-auto">
           {loading ? (
-            <div className="flex h-full items-center justify-center text-neutral-500">
+            <div className="flex h-full items-center justify-center text-muted-foreground">
               Opening PDF…
             </div>
           ) : hasDoc && selectedDoc && selected && pageSize ? (
-            <div className="flex min-h-full justify-center bg-neutral-800 p-8">
+            <div className="flex min-h-full justify-center bg-muted p-8">
               <div className="relative">
                 {selected.rotation !== 0 && (
-                  <div className="absolute -top-6 right-0 flex items-center gap-1 text-xs text-neutral-400">
+                  <div className="absolute -top-6 right-0 flex items-center gap-1 text-xs text-muted-foreground">
                     <RotateCw className="h-3 w-3" />
                     Rotated {selected.rotation}° — applied on export
                   </div>
@@ -142,5 +144,6 @@ export default function Editor() {
         />
       )}
     </div>
+    </TooltipProvider>
   );
 }

@@ -24,7 +24,8 @@ import { buildEditedPdf, downloadBytes, type SourceBytes } from "@/lib/pdf/expor
 import { openPdf } from "@/lib/pdf/pdfjs";
 import { readFormFields, fillAndFlatten } from "@/lib/pdf/forms";
 import type { ToolId } from "@/types";
-import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
 
 interface Props {
   hasForm: boolean;
@@ -118,29 +119,25 @@ export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
   }
 
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-neutral-800 bg-neutral-950 px-4">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-border bg-card px-4">
       <div className="flex min-w-0 items-center gap-3">
-        <span className="text-sm font-semibold text-neutral-100">look-pdf-edit</span>
+        <span className="text-sm font-semibold">look-pdf-edit</span>
         {hasDoc && (
-          <span className="max-w-[24ch] truncate text-sm text-neutral-500">{title}</span>
+          <span className="max-w-[24ch] truncate text-sm text-muted-foreground">{title}</span>
         )}
       </div>
 
       {hasDoc && (
         <div className="flex items-center gap-1">
           {TOOLS.map(({ id, label, Icon }) => (
-            <button
+            <TipButton
               key={id}
-              type="button"
-              title={label}
+              label={label}
+              active={activeTool === id}
               onClick={() => setTool(id)}
-              className={cn(
-                "rounded-md p-2 text-neutral-300 transition-colors hover:bg-neutral-800",
-                activeTool === id && "bg-blue-600 text-white hover:bg-blue-600",
-              )}
             >
-              <Icon className="h-4 w-4" />
-            </button>
+              <Icon className="size-4" />
+            </TipButton>
           ))}
 
           <label className="ml-1 flex items-center" title="Colour">
@@ -148,42 +145,30 @@ export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
               type="color"
               value={color}
               onChange={(e) => setColor(e.target.value)}
-              className="h-7 w-7 cursor-pointer rounded border border-neutral-700 bg-transparent"
+              className="size-7 cursor-pointer rounded border border-input bg-transparent"
             />
           </label>
 
           {selectedAnnotationId && (
-            <button
-              type="button"
-              title="Delete annotation"
+            <TipButton
+              label="Delete annotation"
               onClick={() => removeAnnotation(selectedAnnotationId)}
-              className="rounded-md p-2 text-neutral-300 hover:bg-neutral-800 hover:text-red-400"
             >
-              <Trash2 className="h-4 w-4" />
-            </button>
+              <Trash2 className="size-4" />
+            </TipButton>
           )}
 
-          <div className="mx-1 h-6 w-px bg-neutral-800" />
+          <div className="mx-1 h-6 w-px bg-border" />
 
-          <button
-            type="button"
-            title="Zoom out"
-            onClick={() => setScale(scale - 0.2)}
-            className="rounded-md p-2 text-neutral-300 hover:bg-neutral-800"
-          >
-            <ZoomOut className="h-4 w-4" />
-          </button>
-          <span className="w-10 text-center text-xs tabular-nums text-neutral-400">
+          <TipButton label="Zoom out" onClick={() => setScale(scale - 0.2)}>
+            <ZoomOut className="size-4" />
+          </TipButton>
+          <span className="w-10 text-center text-xs tabular-nums text-muted-foreground">
             {Math.round(scale * 100)}%
           </span>
-          <button
-            type="button"
-            title="Zoom in"
-            onClick={() => setScale(scale + 0.2)}
-            className="rounded-md p-2 text-neutral-300 hover:bg-neutral-800"
-          >
-            <ZoomIn className="h-4 w-4" />
-          </button>
+          <TipButton label="Zoom in" onClick={() => setScale(scale + 0.2)}>
+            <ZoomIn className="size-4" />
+          </TipButton>
         </div>
       )}
 
@@ -201,88 +186,72 @@ export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
                 e.target.value = "";
               }}
             />
-            <IconAction title="Add PDF (merge)" onClick={() => addInputRef.current?.click()}>
-              <FilePlus className="h-4 w-4" />
-            </IconAction>
-            <IconAction
-              title="Extract current page"
+            <TipButton label="Add PDF (merge)" onClick={() => addInputRef.current?.click()}>
+              <FilePlus className="size-4" />
+            </TipButton>
+            <TipButton
+              label="Extract current page"
               disabled={selectedIndex < 0}
               onClick={() =>
                 exportPages([pages[selectedIndex]], `${baseName}-page-${selectedIndex + 1}.pdf`)
               }
             >
-              <FileDown className="h-4 w-4" />
-            </IconAction>
-            <IconAction
-              title="Split before current page"
-              disabled={!canSplit}
-              onClick={handleSplit}
-            >
-              <Scissors className="h-4 w-4" />
-            </IconAction>
+              <FileDown className="size-4" />
+            </TipButton>
+            <TipButton label="Split before current page" disabled={!canSplit} onClick={handleSplit}>
+              <Scissors className="size-4" />
+            </TipButton>
             {hasForm && (
-              <button
-                type="button"
-                title="Fill form fields"
-                onClick={onToggleForm}
-                className={cn(
-                  "rounded-md p-2 text-neutral-300 transition-colors hover:bg-neutral-800",
-                  formOpen && "bg-blue-600 text-white hover:bg-blue-600",
-                )}
-              >
-                <FileText className="h-4 w-4" />
-              </button>
+              <TipButton label="Fill form fields" active={formOpen} onClick={onToggleForm}>
+                <FileText className="size-4" />
+              </TipButton>
             )}
-            <div className="mx-1 h-6 w-px bg-neutral-800" />
+            <div className="mx-1 h-6 w-px bg-border" />
           </>
         )}
 
-        <button
-          type="button"
-          onClick={reset}
-          className="flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm text-neutral-300 hover:bg-neutral-800"
-        >
-          <FilePlus2 className="h-4 w-4" />
+        <Button variant="ghost" onClick={reset}>
+          <FilePlus2 className="size-4" />
           New
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
           onClick={() => exportPages(pages, `${baseName}-edited.pdf`)}
           disabled={exporting || pages.length === 0}
-          className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
         >
-          {exporting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <Download className="h-4 w-4" />
-          )}
+          {exporting ? <Loader2 className="size-4 animate-spin" /> : <Download className="size-4" />}
           Download
-        </button>
+        </Button>
       </div>
     </header>
   );
 }
 
-function IconAction({
-  children,
-  onClick,
-  title,
+function TipButton({
+  label,
+  active,
   disabled,
+  onClick,
+  children,
 }: {
-  children: React.ReactNode;
-  onClick: () => void;
-  title: string;
+  label: string;
+  active?: boolean;
   disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
 }) {
   return (
-    <button
-      type="button"
-      title={title}
-      onClick={onClick}
-      disabled={disabled}
-      className="rounded-md p-2 text-neutral-300 transition-colors hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
-    >
-      {children}
-    </button>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant={active ? "default" : "ghost"}
+          size="icon"
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {children}
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
   );
 }

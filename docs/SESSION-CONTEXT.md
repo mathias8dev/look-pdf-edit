@@ -1,92 +1,79 @@
 # Session context — resume here
 
-> Handoff notes for `look-pdf-edit`. Read this first to continue the conversation/build without re-deriving decisions. Last updated: 2026-07-03.
+> Handoff notes for `look-pdf-edit`. Read this first to continue without re-deriving decisions. Last updated: 2026-07-03.
 
 ## What this project is
 
-A **web-based PDF editor**. User uploads a PDF and edits it. Everything runs **client-side** — files never leave the browser (privacy-first, no server cost, works offline).
+A **web-based PDF editor**. User uploads PDF(s) and edits them. Everything runs **client-side** — files never leave the browser (privacy-first, no server cost, works offline).
 
-## Decisions locked in (from the brainstorm)
+## Roadmap status — ALL SHIPPED
 
-| Decision | Choice | Notes |
+| # | Milestone | Status |
 | --- | --- | --- |
-| MVP scope | **Overlay + page assembly** | Annotate (text/highlight/draw/shapes/signature) + merge/split/insert/extract + form filling. NOT true in-place text editing. |
-| Processing | **Client-only** | No accounts/persistence/backend for now. Add API routes later only if we want save/share/large files. |
-| UI / styling | **Tailwind + shadcn/ui** | Tailwind v4 is installed. shadcn components NOT added yet — currently hand-rolled Tailwind. |
+| 0 | Project scaffold (Next 16, pdf.js, pdf-lib, Zustand, Tailwind v4) | ✅ |
+| 1 | Page assembly — reorder / rotate / delete → download | ✅ |
+| 2 | Verify page-assembly round-trip (Vitest) | ✅ |
+| 3 | Annotation overlay — text, highlight, draw, shapes, signatures (Konva) | ✅ |
+| 4 | Multi-document assembly — merge / split / extract | ✅ |
+| 5 | Form filling — AcroForm detect + fill + flatten | ✅ |
+| 6 | Adopt shadcn/ui design system | ✅ |
 
-**Key architectural insight from the brainstorm:** "PDF editing" splits into (1) *overlay editing* — draw on top, achievable; and (2) *true content editing* — reflow existing body text, very hard (glyphs at fixed coords, needs heavy WASM like mupdf). We deliberately build the overlay editor first; true text editing is a later scoped experiment, if ever.
+Each step is its own commit; `git log` reads as the build history.
 
-## What's built and VERIFIED
+## Architecture / key decisions
 
-Working vertical slice: **upload → render → page assembly (reorder / rotate / delete) → download edited PDF.**
-
-Verification done this session:
-- `npx tsc --noEmit` → clean
-- `npm run build` → passes (static prerender OK)
-- dev server boots, `/` SSRs with the uploader, `/pdf.worker.min.mjs` served (1.25 MB)
-- NOT yet exercised in a real browser with a real PDF end-to-end (upload→canvas→download round-trip). That's the first thing to manually confirm.
-
-## Stack (installed)
-
-Next.js 16.2.10 (App Router, Turbopack, React 19.2) · `pdfjs-dist` 6 (render) · `pdf-lib` (manipulate) · `konva` + `react-konva` (annotation layer — installed, NOT used yet) · `zustand` (state) · Tailwind v4 · `lucide-react` · `clsx` + `tailwind-merge`.
-
-## How the pipeline works
-
-```
-Upload → File → Uint8Array (kept in memory, in the Zustand store)
-   ├─ pdf.js  → renders each page to <canvas> (thumbnails + main view)
-   └─ pdf-lib → on Download, rebuilds a FRESH PDF from the ORIGINAL bytes,
-                applying page order + deletions + rotation deltas
-```
-
-- Original bytes are **never mutated**. Page ops = an ordered list of `{ id, srcIndex, rotation }` (`PageItem`). Array order = output order; delete removes the item; rotation is a user delta on top of the page's intrinsic rotation.
-- `pdfjs-dist` is imported **lazily** (`src/lib/pdf/pdfjs.ts`) — it touches `DOMMatrix` at module-eval time and crashes server prerender otherwise. This bug was hit and fixed this session; do NOT convert it back to a top-level import.
-- pdf.js worker is copied to `public/pdf.worker.min.mjs` (no CDN → offline). If `pdfjs-dist` is upgraded, re-copy the worker from `node_modules/pdfjs-dist/build/`.
-- `openPdf` hands pdf.js a `bytes.slice(0)` COPY because `getDocument` detaches the buffer; the store keeps the original intact for pdf-lib export.
+- **Client-only.** No backend. Original bytes kept immutable; the output PDF is rebuilt fresh with pdf-lib on every download.
+- **Coordinate model (annotations):** geometry is stored in **PDF points** (bottom-left origin, y-up, unrotated page). Survives zoom exactly and rotates with the page on export. Pure conversions live in `lib/pdf/coords.ts` (unit-tested). The main editing surface renders the page **unrotated**; page rotation is baked into the output on export — this keeps the overlay math pure (no rotated-handle math). See the `RotateCw` badge in the main view.
+- **Assembly model:** `PageItem { id, docId, srcIndex, rotation }`. The store holds `docs[]` (each = original bytes + live pdf.js doc + detected form fields). `buildEditedPdf(sources, pages, annotations)` copies each page from its own `docId`. Extraction/splitting are just this over a subset of `pages` — no separate code path.
+- **Forms:** filled values are **flattened** into page content on export, because interactive widgets do not reliably survive pdf-lib `copyPages`. This composes cleanly with reorder/rotate/annotations/multi-doc.
+- **pdf.js is imported lazily** (`lib/pdf/pdfjs.ts`) — it touches `DOMMatrix` at module load and crashes server prerender otherwise. Do NOT convert to a top-level import. The Konva overlay is loaded via `next/dynamic({ ssr:false })` (browser-only) — see `Editor.tsx`.
+- **Worker** vendored at `public/pdf.worker.min.mjs` (offline, no CDN). Re-copy from `node_modules/pdfjs-dist/build/` if pdfjs-dist is upgraded.
+- **shadcn/ui:** components live in `src/components/ui/` (Button, Dialog, Tabs, Select, Checkbox, Input, Label, Tooltip). Design tokens (Tailwind v4 `@theme inline` + `.dark`) are in `src/app/globals.css`; the app is forced dark via `class="dark"` on `<html>`. `components.json` marks the project shadcn-enabled — future components can be added with `npx shadcn@latest add <name>`.
 
 ## File map
 
 ```
 src/
-  app/                 layout.tsx (metadata set), page.tsx (renders <Editor/>)
-  components/editor/
-    Editor.tsx         orchestrator: file load, layout, main viewport, holds pdf.js doc in state
-    Uploader.tsx       drag-drop / click upload (accepts application/pdf)
-    Toolbar.tsx        New (reset) + Download (pdf-lib export → buildEditedPdf)
-    Thumbnails.tsx     left sidebar: per-page reorder (up/down) / rotate / delete / select
-    PageCanvas.tsx     reusable pdf.js page → canvas renderer (re-renders on rotation/scale)
-  lib/
-    pdf/pdfjs.ts       lazy pdf.js loader + renderPage()
-    pdf/export.ts      buildEditedPdf() + downloadBytes()
-    store/editor-store.ts   Zustand: fileName, originalBytes, pages[], selectedId + actions
-    utils.ts           cn(), nextId()
-  types/index.ts       PageItem, Rotation
-public/pdf.worker.min.mjs
+  app/                 layout.tsx (dark, fonts), page.tsx (<Editor/>), globals.css (shadcn tokens)
+  components/
+    ui/                shadcn: button, dialog, tabs, select, checkbox, input, label, tooltip
+    editor/
+      Editor.tsx       orchestrator: upload, layout, main viewport, dialogs/panels
+      Uploader.tsx     drag-drop / click upload
+      Toolbar.tsx      tools, colour, zoom, Add-PDF/Extract/Split, Form toggle, New, Download
+      Thumbnails.tsx   per-page reorder/rotate/delete + source-doc colour badge
+      PageCanvas.tsx   pdf.js page → canvas renderer
+      AnnotationLayer.tsx  Konva overlay (create/move/resize/select) — ssr:false
+      SignatureDialog.tsx  draw / type / upload → one image stamp
+      FormPanel.tsx    AcroForm field editor (right panel)
+  lib/pdf/
+    pdfjs.ts           lazy pdf.js loader, renderPage(), getPageSize()
+    export.ts          buildEditedPdf(sources, pages, annotations) + downloadBytes()
+    coords.ts          pure PDF<->view conversions + hexToRgb01
+    forms.ts           readFormFields() + fillAndFlatten()
+    test-utils.ts      synthetic PDFs (distinct page widths) for tests
+  lib/store/editor-store.ts   Zustand: docs, pages, annotations, forms, tool/colour/zoom
+  types/index.ts       PageItem, Rotation, Annotation union, ToolId
 ```
 
-## Next steps (in recommended order)
+## Tests
 
-1. **Manually verify** the round-trip in a browser with a real multi-page PDF (upload, rotate/delete/reorder, download, reopen the result).
-2. **Annotation overlay** (the big one) — a Konva stage layered over each page for text boxes, highlight, freehand, rectangles/lines, image/signature stamps. Fiddliest part is coordinate mapping: screen px ↔ PDF points ↔ rotation. Export bakes annotations via pdf-lib `drawText`/`drawRectangle`/`drawImage`. Extend the store with an `annotations[]` per page.
-3. **Multi-doc assembly** — merge multiple PDFs, split, insert/extract pages. Extends the `PageItem` model (add a source-document id so pages can come from >1 file).
-4. **Form filling** — detect AcroForm fields, fill, optionally flatten.
-5. Consider adding **shadcn/ui** properly (currently hand-rolled Tailwind) before the UI grows.
+`npm test` (Vitest, jsdom) — **52 tests**, all green. Cover: coordinate round-trips at multiple scales; `buildEditedPdf` reorder/delete/rotate/duplicate/intrinsic-rotation + multi-source merge order + unknown-doc throw; per-kind annotation baking (text present as hex, image XObject, deleted-page exclusion); form field enumeration + fill/flatten; store reducers (pages, annotations, multi-doc, forms). Also gated: `npx tsc --noEmit`, `npx eslint src`, `npm run build` — all clean.
 
-## Open questions for the user (were pending when this was written)
+## What is NOT yet done / next ideas
 
-- **Annotation coordinate fidelity:** perfect survival across re-rotation + zoom (more math up front), or "good enough at 100%" for a first pass?
-- **Signatures:** draw-with-mouse pad, type-a-name, upload-an-image — which / all three?
-- **Build order:** annotation overlay next, or multi-doc merge/split first?
+- **Real-browser E2E** of the interactive Konva/Radix surfaces (drawing, drag/resize, dialogs) is not automated — logic is unit-tested, the app builds & SSRs, but a manual pass (or Playwright) with a real multi-page PDF + a real AcroForm is the recommended confidence check.
+- True in-place **text editing** (reflow existing body text) is deliberately out of scope — needs heavy WASM (mupdf). Overlay editing only.
+- Possible follow-ups: undo/redo, drag-to-reorder thumbnails, page-range extract UI (multi-select), light-theme toggle (tokens already support it), keyboard shortcuts.
 
 ## Running locally (this machine)
 
 Node is managed by **nvm-windows** and is NOT on PATH in a fresh shell.
 
 ```powershell
-nvm use 26.3.1                                   # v26.3.1 installed; npm 11.16.0
-$env:Path = "C:\Program Files\nodejs;" + $env:Path
-npm run dev                                       # http://localhost:3000
+$env:Path = "C:\Program Files\nodejs;C:\ProgramData\nvm\v26.3.1;" + $env:Path
+nvm use 26.3.1                                    # v26.3.1 / npm 11.16.0
+npm run dev                                        # http://localhost:3000
 npm run build
+npm test
 ```
-
-Direct binary if needed: `C:\ProgramData\nvm\v26.3.1\node.exe`.

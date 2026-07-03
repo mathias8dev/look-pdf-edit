@@ -5,6 +5,7 @@ import { ChevronUp, ChevronDown, RotateCw, Trash2 } from "lucide-react";
 import PageCanvas from "./PageCanvas";
 import { useEditorStore } from "@/lib/store/editor-store";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 // Distinct badge colours to mark which source document a page came from.
 const DOC_COLORS = [
@@ -36,8 +37,8 @@ export default function Thumbnails() {
   const multiDoc = docs.length > 1;
 
   return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-neutral-800 bg-neutral-950">
-      <div className="border-b border-neutral-800 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-neutral-500">
+    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-card">
+      <div className="border-b border-border px-4 py-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         Pages · {pages.length}
       </div>
       <div className="flex-1 space-y-3 overflow-y-auto p-3">
@@ -49,14 +50,14 @@ export default function Thumbnails() {
               className={cn(
                 "group rounded-lg border p-2 transition-colors",
                 p.id === selectedId
-                  ? "border-blue-500 bg-blue-500/10"
-                  : "border-neutral-800 bg-neutral-900 hover:border-neutral-600",
+                  ? "border-primary bg-primary/10"
+                  : "border-border bg-background hover:border-muted-foreground/40",
               )}
             >
               <button
                 type="button"
                 onClick={() => select(p.id)}
-                className="relative flex w-full justify-center overflow-hidden rounded bg-neutral-800"
+                className="relative flex w-full justify-center overflow-hidden rounded bg-muted"
               >
                 {doc && (
                   <PageCanvas
@@ -77,19 +78,19 @@ export default function Thumbnails() {
                 )}
               </button>
               <div className="mt-2 flex items-center justify-between">
-                <span className="text-xs text-neutral-500">{i + 1}</span>
+                <span className="text-xs text-muted-foreground">{i + 1}</span>
                 <div className="flex gap-0.5 opacity-70 group-hover:opacity-100">
                   <IconBtn title="Move up" onClick={() => movePage(p.id, -1)}>
-                    <ChevronUp className="h-3.5 w-3.5" />
+                    <ChevronUp className="size-3.5" />
                   </IconBtn>
                   <IconBtn title="Move down" onClick={() => movePage(p.id, 1)}>
-                    <ChevronDown className="h-3.5 w-3.5" />
+                    <ChevronDown className="size-3.5" />
                   </IconBtn>
                   <IconBtn title="Rotate" onClick={() => rotatePage(p.id, 1)}>
-                    <RotateCw className="h-3.5 w-3.5" />
+                    <RotateCw className="size-3.5" />
                   </IconBtn>
                   <IconBtn title="Delete" danger onClick={() => deletePage(p.id)}>
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="size-3.5" />
                   </IconBtn>
                 </div>
               </div>
@@ -113,16 +114,14 @@ function IconBtn({
   danger?: boolean;
 }) {
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="icon"
       title={title}
       onClick={onClick}
-      className={cn(
-        "rounded p-1 text-neutral-400 transition-colors hover:bg-neutral-700",
-        danger ? "hover:text-red-400" : "hover:text-neutral-100",
-      )}
+      className={cn("size-7 text-muted-foreground", danger && "hover:text-destructive")}
     >
       {children}
-    </button>
+    </Button>
   );
 }

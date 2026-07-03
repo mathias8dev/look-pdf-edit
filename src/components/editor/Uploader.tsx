@@ -39,16 +39,16 @@ export default function Uploader({ onFile }: Props) {
         className={cn(
           "flex w-full max-w-xl flex-col items-center gap-4 rounded-2xl border-2 border-dashed px-8 py-20 transition-colors",
           dragging
-            ? "border-blue-400 bg-blue-500/10"
-            : "border-neutral-700 bg-neutral-900/40 hover:border-neutral-500",
+            ? "border-primary bg-primary/10"
+            : "border-input bg-card/40 hover:border-muted-foreground/50",
         )}
       >
-        <FileUp className="h-10 w-10 text-neutral-400" />
+        <FileUp className="size-10 text-muted-foreground" />
         <div className="text-center">
-          <p className="text-base font-medium text-neutral-100">
+          <p className="text-base font-medium text-foreground">
             Drop a PDF here, or click to browse
           </p>
-          <p className="mt-1 text-sm text-neutral-500">
+          <p className="mt-1 text-sm text-muted-foreground">
             Files stay in your browser — nothing is uploaded to a server.
           </p>
         </div>

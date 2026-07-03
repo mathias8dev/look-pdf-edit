@@ -3,12 +3,25 @@
 import { X } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor-store";
 import type { FormField, FieldValue } from "@/lib/pdf/forms";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from "@/components/ui/select";
 
 interface Props {
   docId: string;
   fields: FormField[];
   onClose: () => void;
 }
+
+const NONE = "__none__";
 
 /**
  * Right-hand panel listing the current document's AcroForm fields. Edits are
@@ -21,27 +34,23 @@ export default function FormPanel({ docId, fields, onClose }: Props) {
   const valueOf = (f: FormField): FieldValue => values?.[f.name] ?? f.value;
 
   return (
-    <aside className="flex w-72 shrink-0 flex-col border-l border-neutral-800 bg-neutral-950">
-      <div className="flex items-center justify-between border-b border-neutral-800 px-4 py-3">
-        <span className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+    <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <span className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
           Form · {fields.length}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded p-1 text-neutral-400 hover:bg-neutral-800 hover:text-neutral-100"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <Button variant="ghost" size="icon" className="size-7" onClick={onClose}>
+          <X className="size-4" />
+        </Button>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto p-4">
         {fields.map((f) => (
           <div key={f.name} className="space-y-1.5">
             {f.type !== "checkbox" && (
-              <label className="block truncate text-xs font-medium text-neutral-400" title={f.name}>
+              <Label className="block truncate text-muted-foreground" title={f.name}>
                 {f.name}
-              </label>
+              </Label>
             )}
             <Field
               field={f}
@@ -51,11 +60,11 @@ export default function FormPanel({ docId, fields, onClose }: Props) {
           </div>
         ))}
         {fields.length === 0 && (
-          <p className="text-sm text-neutral-500">This document has no form fields.</p>
+          <p className="text-sm text-muted-foreground">This document has no form fields.</p>
         )}
       </div>
 
-      <div className="border-t border-neutral-800 px-4 py-3 text-xs text-neutral-500">
+      <div className="border-t border-border px-4 py-3 text-xs text-muted-foreground">
         Field values are flattened into the page on download.
       </div>
     </aside>
@@ -71,18 +80,13 @@ function Field({
   value: FieldValue;
   onChange: (v: FieldValue) => void;
 }) {
-  const inputClass =
-    "w-full rounded-md border border-neutral-700 bg-neutral-900 px-2.5 py-1.5 text-sm text-neutral-100 outline-none focus:border-blue-500";
-
   switch (field.type) {
     case "checkbox":
       return (
-        <label className="flex items-center gap-2 text-sm text-neutral-200">
-          <input
-            type="checkbox"
+        <label className="flex items-center gap-2 text-sm">
+          <Checkbox
             checked={value === true}
-            onChange={(e) => onChange(e.target.checked)}
-            className="h-4 w-4 accent-blue-500"
+            onCheckedChange={(c) => onChange(c === true)}
           />
           <span className="truncate" title={field.name}>
             {field.name}
@@ -93,39 +97,39 @@ function Field({
     case "dropdown":
     case "radio":
       return (
-        <select
-          value={typeof value === "string" ? value : ""}
-          onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
+        <Select
+          value={typeof value === "string" && value ? value : NONE}
+          onValueChange={(v) => onChange(v === NONE ? "" : v)}
         >
-          <option value="">— none —</option>
-          {field.options?.map((opt) => (
-            <option key={opt} value={opt}>
-              {opt}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger>
+            <SelectValue placeholder="— none —" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value={NONE}>— none —</SelectItem>
+            {field.options?.map((opt) => (
+              <SelectItem key={opt} value={opt}>
+                {opt}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       );
 
     case "optionlist":
       return (
-        <div className="space-y-1 rounded-md border border-neutral-700 bg-neutral-900 p-2">
+        <div className="space-y-1 rounded-md border border-input p-2">
           {field.options?.map((opt) => {
             const selected = Array.isArray(value) && value.includes(opt);
             return (
-              <label key={opt} className="flex items-center gap-2 text-sm text-neutral-200">
-                <input
-                  type="checkbox"
+              <label key={opt} className="flex items-center gap-2 text-sm">
+                <Checkbox
                   checked={selected}
-                  onChange={(e) => {
+                  onCheckedChange={(c) => {
                     const current = Array.isArray(value) ? value : [];
                     onChange(
-                      e.target.checked
-                        ? [...current, opt]
-                        : current.filter((o) => o !== opt),
+                      c === true ? [...current, opt] : current.filter((o) => o !== opt),
                     );
                   }}
-                  className="h-4 w-4 accent-blue-500"
                 />
                 {opt}
               </label>
@@ -136,17 +140,14 @@ function Field({
 
     case "text":
       return (
-        <input
+        <Input
           type="text"
           value={typeof value === "string" ? value : ""}
           onChange={(e) => onChange(e.target.value)}
-          className={inputClass}
         />
       );
 
     default:
-      return (
-        <p className="text-xs italic text-neutral-600">Unsupported field type.</p>
-      );
+      return <p className="text-xs italic text-muted-foreground">Unsupported field type.</p>;
   }
 }
