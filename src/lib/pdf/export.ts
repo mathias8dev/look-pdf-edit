@@ -10,6 +10,18 @@ import fontkit from "@pdf-lib/fontkit";
 import type { Annotation, PageItem, Rotation, TextAnnotation } from "@/types";
 import { hexToRgb01, mapFlatPoints } from "./coords";
 import { standardFontKey, embeddedFontUrl } from "@/lib/fonts";
+import {
+  contentRect,
+  formatPageNumber,
+  pageNumberAnchor,
+  watermarkPlacements,
+  type FinishingSettings,
+  type WatermarkSettings,
+  type Rect,
+} from "@/lib/finishing";
+
+/** Inset (PDF points) keeping a corner/edge watermark off the page edge. */
+const WATERMARK_MARGIN = 16;
 
 /** Fetches the bytes for an embedded font URL. Overridable for tests. */
 export type FontBytesLoader = (url: string) => Promise<Uint8Array>;
@@ -43,12 +55,17 @@ export async function buildEditedPdf(
   sources: SourceBytes,
   pages: PageItem[],
   annotations: Annotation[] = [],
-  opts: { loadFontBytes?: FontBytesLoader } = {},
+  opts: { loadFontBytes?: FontBytesLoader; finishing?: FinishingSettings } = {},
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<string, PDFDocument>();
   const byPage = groupByPage(annotations);
   const getTextFont = makeFontResolver(out, opts.loadFontBytes ?? fetchFontBytes);
+  const fin = opts.finishing;
+
+  // Lazily-embedded Helvetica for finishing text (page numbers / watermark).
+  let helv: PDFFont | null = null;
+  const helvFont = async () => (helv ??= await out.embedFont(StandardFonts.Helvetica));
 
   async function sourceDoc(docId: string): Promise<PDFDocument> {
     let doc = loaded.get(docId);
@@ -61,7 +78,8 @@ export async function buildEditedPdf(
     return doc;
   }
 
-  for (const item of pages) {
+  for (let i = 0; i < pages.length; i++) {
+    const item = pages[i];
     const src = await sourceDoc(item.docId);
     const [page] = await out.copyPages(src, [item.srcIndex]);
 
@@ -73,10 +91,64 @@ export async function buildEditedPdf(
       await drawAnnotation(out, page, a, getTextFont);
     }
 
+    if (fin) {
+      const { width, height } = page.getSize();
+      const rect = contentRect(width, height, fin.crop);
+
+      if (fin.watermark.enabled && fin.watermark.text) {
+        drawWatermark(page, await helvFont(), fin.watermark, rect);
+      }
+      if (fin.pageNumbers.enabled) {
+        const font = await helvFont();
+        const pn = fin.pageNumbers;
+        const text = formatPageNumber(pn.format, pn.start + i, pages.length);
+        const tw = font.widthOfTextAtSize(text, pn.fontSize);
+        const at = pageNumberAnchor(pn.position, rect, tw, pn.fontSize, pn.margin);
+        page.drawText(text, { x: at.x, y: at.y, size: pn.fontSize, font });
+      }
+      if (fin.crop.enabled) {
+        page.setCropBox(rect.x, rect.y, rect.w, rect.h);
+      }
+    }
+
     out.addPage(page);
   }
 
   return out.save();
+}
+
+/** Draw a (optionally tiled) rotated, semi-transparent text watermark. */
+function drawWatermark(
+  page: PDFPage,
+  font: PDFFont,
+  wm: WatermarkSettings,
+  rect: Rect,
+): void {
+  const c = hexToRgb01(wm.color);
+  const tw = font.widthOfTextAtSize(wm.text, wm.fontSize);
+  const placements = watermarkPlacements(
+    rect,
+    { width: tw, height: wm.fontSize },
+    {
+      position: wm.position,
+      rotation: wm.rotation,
+      tile: wm.tile,
+      spacing: wm.spacing,
+      margin: WATERMARK_MARGIN,
+    },
+  );
+
+  for (const a of placements) {
+    page.drawText(wm.text, {
+      x: a.x,
+      y: a.y,
+      size: wm.fontSize,
+      font,
+      color: rgb(c.r, c.g, c.b),
+      opacity: wm.opacity,
+      rotate: degrees(wm.rotation),
+    });
+  }
 }
 
 /** Resolves + caches the pdf-lib font for a text annotation (standard or embedded). */
@@ -213,3 +285,4 @@ export function downloadBytes(bytes: Uint8Array, fileName: string) {
   a.remove();
   URL.revokeObjectURL(url);
 }
+

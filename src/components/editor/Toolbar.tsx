@@ -8,6 +8,7 @@ import {
   FileDown,
   FileText,
   Layers,
+  Stamp,
   Scissors,
   Loader2,
   MousePointer2,
@@ -34,6 +35,8 @@ interface Props {
   onToggleForm: () => void;
   objectsOpen: boolean;
   onToggleObjects: () => void;
+  finishingOpen: boolean;
+  onToggleFinishing: () => void;
 }
 
 const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
@@ -51,6 +54,8 @@ export default function Toolbar({
   onToggleForm,
   objectsOpen,
   onToggleObjects,
+  finishingOpen,
+  onToggleFinishing,
 }: Props) {
   const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
@@ -66,6 +71,7 @@ export default function Toolbar({
   const setScale = useEditorStore((s) => s.setScale);
   const removeAnnotations = useEditorStore((s) => s.removeAnnotations);
   const addDocument = useEditorStore((s) => s.addDocument);
+  const finishing = useEditorStore((s) => s.finishing);
   const reset = useEditorStore((s) => s.reset);
 
   const [exporting, setExporting] = useState(false);
@@ -96,7 +102,9 @@ export default function Toolbar({
   async function exportPages(pageSubset: typeof pages, name: string) {
     setExporting(true);
     try {
-      const bytes = await buildEditedPdf(await buildSources(), pageSubset, annotations);
+      const bytes = await buildEditedPdf(await buildSources(), pageSubset, annotations, {
+        finishing,
+      });
       downloadBytes(bytes, name);
     } catch (err) {
       console.error(err);
@@ -216,6 +224,13 @@ export default function Toolbar({
             </TipButton>
             <TipButton label="Objects" active={objectsOpen} onClick={onToggleObjects}>
               <Layers className="size-4" />
+            </TipButton>
+            <TipButton
+              label="Finishing (page numbers, watermark, crop)"
+              active={finishingOpen}
+              onClick={onToggleFinishing}
+            >
+              <Stamp className="size-4" />
             </TipButton>
             {hasForm && (
               <TipButton label="Fill form fields" active={formOpen} onClick={onToggleForm}>

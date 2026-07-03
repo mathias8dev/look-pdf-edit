@@ -14,6 +14,8 @@ import SignatureDialog from "./SignatureDialog";
 import FormPanel from "./FormPanel";
 import ObjectsPanel from "./ObjectsPanel";
 import PropertiesPanel from "./PropertiesPanel";
+import FinishingPanel from "./FinishingPanel";
+import FinishingPreview from "./FinishingPreview";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Konva is browser-only (touches window/canvas at module load), so the overlay
@@ -31,6 +33,7 @@ export default function Editor() {
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
   const [formOpen, setFormOpen] = useState(false);
   const [objectsOpen, setObjectsOpen] = useState(false);
+  const [finishingOpen, setFinishingOpen] = useState(false);
 
   const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
@@ -99,6 +102,8 @@ export default function Editor() {
         onToggleForm={() => setFormOpen((o) => !o)}
         objectsOpen={objectsOpen}
         onToggleObjects={() => setObjectsOpen((o) => !o)}
+        finishingOpen={finishingOpen}
+        onToggleFinishing={() => setFinishingOpen((o) => !o)}
       />
       <div className="flex min-h-0 flex-1">
         {hasDoc && <Thumbnails />}
@@ -135,6 +140,13 @@ export default function Editor() {
                       scale={scale}
                     />
                   </div>
+                  <FinishingPreview
+                    pageWidth={pageSize.width}
+                    pageHeight={pageSize.height}
+                    scale={scale}
+                    pageIndex={pages.indexOf(selected)}
+                    total={pages.length}
+                  />
                 </div>
               </div>
             </div>
@@ -147,6 +159,9 @@ export default function Editor() {
         )}
         {showObjects && selected && (
           <ObjectsPanel pageId={selected.id} onClose={() => setObjectsOpen(false)} />
+        )}
+        {finishingOpen && hasDoc && (
+          <FinishingPanel onClose={() => setFinishingOpen(false)} />
         )}
         {showForm && selectedSource && (
           <FormPanel

@@ -4,6 +4,13 @@ import { create } from "zustand";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Annotation, PageItem, Rotation, ToolId } from "@/types";
 import type { FormField, FieldValue } from "@/lib/pdf/forms";
+import {
+  DEFAULT_FINISHING,
+  type FinishingSettings,
+  type PageNumberSettings,
+  type WatermarkSettings,
+  type CropSettings,
+} from "@/lib/finishing";
 import { nextId } from "@/lib/utils";
 
 /** An uploaded source PDF: original bytes (for pdf-lib) + live pdf.js doc. */
@@ -34,6 +41,9 @@ interface EditorState {
 
   /** Edited form-field values, keyed by docId then field name. */
   forms: Record<string, Record<string, FieldValue>>;
+
+  /** Document-wide finishing applied on export (page numbers / watermark / crop). */
+  finishing: FinishingSettings;
 
   /** Load the first document, replacing any current session. */
   loadDocument: (
@@ -75,6 +85,10 @@ interface EditorState {
   selectAnnotations: (ids: string[]) => void;
   /** Change an annotation's z-order among others on the SAME page. dir +1 = forward. */
   reorderAnnotation: (id: string, dir: 1 | -1) => void;
+
+  setPageNumbers: (patch: Partial<PageNumberSettings>) => void;
+  setWatermark: (patch: Partial<WatermarkSettings>) => void;
+  setCrop: (patch: Partial<CropSettings>) => void;
 }
 
 function rotate(r: Rotation, dir: 1 | -1): Rotation {
@@ -101,6 +115,7 @@ const EMPTY = {
   selectedAnnotationIds: [] as string[],
   activeTool: "select" as ToolId,
   forms: {} as Record<string, Record<string, FieldValue>>,
+  finishing: DEFAULT_FINISHING,
 };
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -250,4 +265,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       [arr[idx], arr[j]] = [arr[j], arr[idx]];
       return { annotations: arr };
     }),
+
+  setPageNumbers: (patch) =>
+    set((s) => ({ finishing: { ...s.finishing, pageNumbers: { ...s.finishing.pageNumbers, ...patch } } })),
+  setWatermark: (patch) =>
+    set((s) => ({ finishing: { ...s.finishing, watermark: { ...s.finishing.watermark, ...patch } } })),
+  setCrop: (patch) =>
+    set((s) => ({ finishing: { ...s.finishing, crop: { ...s.finishing.crop, ...patch } } })),
 }));
