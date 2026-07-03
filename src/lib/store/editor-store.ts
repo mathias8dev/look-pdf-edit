@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Annotation, PageItem, Rotation, ToolId } from "@/types";
+import type { FormField, FieldValue } from "@/lib/pdf/forms";
 import { nextId } from "@/lib/utils";
 
 /** An uploaded source PDF: original bytes (for pdf-lib) + live pdf.js doc. */
@@ -11,6 +12,8 @@ export interface SourceDoc {
   fileName: string;
   bytes: Uint8Array;
   pdfDoc: PDFDocumentProxy;
+  /** AcroForm fields detected at load time (empty if the PDF has no form). */
+  formFields: FormField[];
 }
 
 interface EditorState {
@@ -28,11 +31,26 @@ interface EditorState {
   /** Zoom factor for the main editing view. */
   scale: number;
 
+  /** Edited form-field values, keyed by docId then field name. */
+  forms: Record<string, Record<string, FieldValue>>;
+
   /** Load the first document, replacing any current session. */
-  loadDocument: (fileName: string, bytes: Uint8Array, doc: PDFDocumentProxy) => void;
+  loadDocument: (
+    fileName: string,
+    bytes: Uint8Array,
+    doc: PDFDocumentProxy,
+    formFields?: FormField[],
+  ) => void;
   /** Append another document's pages to the end of the assembly (merge). */
-  addDocument: (fileName: string, bytes: Uint8Array, doc: PDFDocumentProxy) => void;
+  addDocument: (
+    fileName: string,
+    bytes: Uint8Array,
+    doc: PDFDocumentProxy,
+    formFields?: FormField[],
+  ) => void;
   reset: () => void;
+
+  setFormValue: (docId: string, name: string, value: FieldValue) => void;
 
   select: (id: string) => void;
   rotatePage: (id: string, dir: 1 | -1) => void;
@@ -72,6 +90,7 @@ const EMPTY = {
   annotations: [] as Annotation[],
   selectedAnnotationId: null,
   activeTool: "select" as ToolId,
+  forms: {} as Record<string, Record<string, FieldValue>>,
 };
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -79,8 +98,14 @@ export const useEditorStore = create<EditorState>((set) => ({
   color: DEFAULT_COLOR,
   scale: 1.4,
 
-  loadDocument: (fileName, bytes, doc) => {
-    const source: SourceDoc = { id: nextId("doc"), fileName, bytes, pdfDoc: doc };
+  loadDocument: (fileName, bytes, doc, formFields = []) => {
+    const source: SourceDoc = {
+      id: nextId("doc"),
+      fileName,
+      bytes,
+      pdfDoc: doc,
+      formFields,
+    };
     const pages = pagesForDoc(source.id, doc.numPages);
     set({
       ...EMPTY,
@@ -90,9 +115,15 @@ export const useEditorStore = create<EditorState>((set) => ({
     });
   },
 
-  addDocument: (fileName, bytes, doc) =>
+  addDocument: (fileName, bytes, doc, formFields = []) =>
     set((s) => {
-      const source: SourceDoc = { id: nextId("doc"), fileName, bytes, pdfDoc: doc };
+      const source: SourceDoc = {
+        id: nextId("doc"),
+        fileName,
+        bytes,
+        pdfDoc: doc,
+        formFields,
+      };
       const newPages = pagesForDoc(source.id, doc.numPages);
       return {
         docs: [...s.docs, source],
@@ -102,6 +133,14 @@ export const useEditorStore = create<EditorState>((set) => ({
     }),
 
   reset: () => set({ ...EMPTY }),
+
+  setFormValue: (docId, name, value) =>
+    set((s) => ({
+      forms: {
+        ...s.forms,
+        [docId]: { ...s.forms[docId], [name]: value },
+      },
+    })),
 
   select: (id) => set({ selectedId: id, selectedAnnotationId: null }),
 
@@ -125,7 +164,10 @@ export const useEditorStore = create<EditorState>((set) => ({
       const annotations = s.annotations.filter((a) => a.pageId !== id);
       const usedDocs = new Set(pages.map((p) => p.docId));
       const docs = s.docs.filter((d) => usedDocs.has(d.id));
-      return { pages, selectedId, annotations, docs };
+      const forms = Object.fromEntries(
+        Object.entries(s.forms).filter(([docId]) => usedDocs.has(docId)),
+      );
+      return { pages, selectedId, annotations, docs, forms };
     }),
 
   movePage: (id, dir) =>

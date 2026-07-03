@@ -140,6 +140,22 @@ describe("editor-store multi-document assembly", () => {
     expect(get().docs.map((d) => d.id)).not.toContain(d0);
     expect(get().docs).toHaveLength(1);
   });
+
+  it("setFormValue records values keyed by docId then field name", () => {
+    loadPages(1);
+    const docId = get().docs[0].id;
+    get().setFormValue(docId, "fullName", "Ada");
+    get().setFormValue(docId, "agree", true);
+    expect(get().forms[docId]).toEqual({ fullName: "Ada", agree: true });
+  });
+
+  it("drops a doc's form values when the doc is pruned", () => {
+    loadPages(1);
+    const docId = get().docs[0].id;
+    get().setFormValue(docId, "fullName", "Ada");
+    get().deletePage(get().pages[0].id);
+    expect(get().forms[docId]).toBeUndefined();
+  });
 });
 
 function textAnn(id: string, pageId: string): Annotation {

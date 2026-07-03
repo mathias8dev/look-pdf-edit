@@ -6,6 +6,7 @@ import {
   FilePlus,
   FilePlus2,
   FileDown,
+  FileText,
   Scissors,
   Loader2,
   MousePointer2,
@@ -21,8 +22,15 @@ import {
 import { useEditorStore } from "@/lib/store/editor-store";
 import { buildEditedPdf, downloadBytes, type SourceBytes } from "@/lib/pdf/export";
 import { openPdf } from "@/lib/pdf/pdfjs";
+import { readFormFields, fillAndFlatten } from "@/lib/pdf/forms";
 import type { ToolId } from "@/types";
 import { cn } from "@/lib/utils";
+
+interface Props {
+  hasForm: boolean;
+  formOpen: boolean;
+  onToggleForm: () => void;
+}
 
 const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
   { id: "select", label: "Select", Icon: MousePointer2 },
@@ -33,10 +41,11 @@ const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
   { id: "signature", label: "Signature", Icon: Signature },
 ];
 
-export default function Toolbar() {
+export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
   const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
   const annotations = useEditorStore((s) => s.annotations);
+  const forms = useEditorStore((s) => s.forms);
   const activeTool = useEditorStore((s) => s.activeTool);
   const color = useEditorStore((s) => s.color);
   const scale = useEditorStore((s) => s.scale);
@@ -59,14 +68,25 @@ export default function Toolbar() {
   const selectedIndex = pages.findIndex((p) => p.id === selectedId);
   const canSplit = selectedIndex > 0; // both halves non-empty
 
-  function sources(): SourceBytes {
-    return Object.fromEntries(docs.map((d) => [d.id, d.bytes]));
+  // Prepare each source's bytes for export: form documents are filled with the
+  // edited values and flattened so they survive the copyPages assembly.
+  async function buildSources(): Promise<SourceBytes> {
+    const entries = await Promise.all(
+      docs.map(async (d) => {
+        const bytes =
+          d.formFields.length > 0
+            ? await fillAndFlatten(d.bytes, forms[d.id] ?? {})
+            : d.bytes;
+        return [d.id, bytes] as const;
+      }),
+    );
+    return Object.fromEntries(entries);
   }
 
   async function exportPages(pageSubset: typeof pages, name: string) {
     setExporting(true);
     try {
-      const bytes = await buildEditedPdf(sources(), pageSubset, annotations);
+      const bytes = await buildEditedPdf(await buildSources(), pageSubset, annotations);
       downloadBytes(bytes, name);
     } catch (err) {
       console.error(err);
@@ -80,7 +100,8 @@ export default function Toolbar() {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const doc = await openPdf(bytes);
-      addDocument(file.name, bytes, doc);
+      const fields = await readFormFields(bytes);
+      addDocument(file.name, bytes, doc, fields);
     } catch (err) {
       console.error(err);
       alert("Could not open that PDF — see console.");
@@ -199,6 +220,19 @@ export default function Toolbar() {
             >
               <Scissors className="h-4 w-4" />
             </IconAction>
+            {hasForm && (
+              <button
+                type="button"
+                title="Fill form fields"
+                onClick={onToggleForm}
+                className={cn(
+                  "rounded-md p-2 text-neutral-300 transition-colors hover:bg-neutral-800",
+                  formOpen && "bg-blue-600 text-white hover:bg-blue-600",
+                )}
+              >
+                <FileText className="h-4 w-4" />
+              </button>
+            )}
             <div className="mx-1 h-6 w-px bg-neutral-800" />
           </>
         )}
