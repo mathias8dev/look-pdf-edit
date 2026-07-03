@@ -6,8 +6,16 @@ import {
   rgb,
   type PDFFont,
 } from "pdf-lib";
-import type { Annotation, PageItem, Rotation } from "@/types";
+import fontkit from "@pdf-lib/fontkit";
+import type { Annotation, PageItem, Rotation, TextAnnotation } from "@/types";
 import { hexToRgb01, mapFlatPoints } from "./coords";
+import { standardFontKey, embeddedFontUrl } from "@/lib/fonts";
+
+/** Fetches the bytes for an embedded font URL. Overridable for tests. */
+export type FontBytesLoader = (url: string) => Promise<Uint8Array>;
+
+const fetchFontBytes: FontBytesLoader = async (url) =>
+  new Uint8Array(await (await fetch(url)).arrayBuffer());
 
 /** Group annotations by the page id they are attached to. */
 function groupByPage(annotations: Annotation[]): Map<string, Annotation[]> {
@@ -35,11 +43,12 @@ export async function buildEditedPdf(
   sources: SourceBytes,
   pages: PageItem[],
   annotations: Annotation[] = [],
+  opts: { loadFontBytes?: FontBytesLoader } = {},
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<string, PDFDocument>();
   const byPage = groupByPage(annotations);
-  let font: PDFFont | null = null;
+  const getTextFont = makeFontResolver(out, opts.loadFontBytes ?? fetchFontBytes);
 
   async function sourceDoc(docId: string): Promise<PDFDocument> {
     let doc = loaded.get(docId);
@@ -60,12 +69,8 @@ export async function buildEditedPdf(
     const base = page.getRotation().angle;
     page.setRotation(degrees((base + delta) % 360));
 
-    const anns = byPage.get(item.id);
-    if (anns && anns.length) {
-      if (!font) font = await out.embedFont(StandardFonts.Helvetica);
-      for (const a of anns) {
-        await drawAnnotation(out, page, a, font);
-      }
+    for (const a of byPage.get(item.id) ?? []) {
+      await drawAnnotation(out, page, a, getTextFont);
     }
 
     out.addPage(page);
@@ -74,15 +79,43 @@ export async function buildEditedPdf(
   return out.save();
 }
 
+/** Resolves + caches the pdf-lib font for a text annotation (standard or embedded). */
+function makeFontResolver(out: PDFDocument, loadFontBytes: FontBytesLoader) {
+  const cache = new Map<string, PDFFont>();
+  let fontkitReady = false;
+
+  return async function getTextFont(a: TextAnnotation): Promise<PDFFont> {
+    const stdKey = standardFontKey(a.fontFamily, a.bold, a.italic);
+    if (stdKey) {
+      const hit = cache.get(stdKey);
+      if (hit) return hit;
+      const f = await out.embedFont(StandardFonts[stdKey as keyof typeof StandardFonts]);
+      cache.set(stdKey, f);
+      return f;
+    }
+    const url = embeddedFontUrl(a.fontFamily, a.bold, a.italic)!;
+    const hit = cache.get(url);
+    if (hit) return hit;
+    if (!fontkitReady) {
+      out.registerFontkit(fontkit);
+      fontkitReady = true;
+    }
+    const f = await out.embedFont(await loadFontBytes(url), { subset: true });
+    cache.set(url, f);
+    return f;
+  };
+}
+
 async function drawAnnotation(
   doc: PDFDocument,
   page: PDFPage,
   a: Annotation,
-  font: PDFFont,
+  getTextFont: (a: TextAnnotation) => Promise<PDFFont>,
 ): Promise<void> {
   switch (a.kind) {
     case "text": {
       const c = hexToRgb01(a.color);
+      const font = await getTextFont(a);
       // Stored y is the top of the text box; pdf-lib anchors at the baseline.
       page.drawText(a.text, {
         x: a.x,

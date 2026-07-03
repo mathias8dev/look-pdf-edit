@@ -13,6 +13,7 @@ import {
   viewRectToPdf,
   mapFlatPoints,
 } from "@/lib/pdf/coords";
+import { fontCss, fontStyle, embeddedFontFaces, DEFAULT_FONT } from "@/lib/fonts";
 
 interface Props {
   pageId: string;
@@ -60,6 +61,8 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
   const selectAnnotations = useEditorStore((s) => s.selectAnnotations);
   const removeAnnotations = useEditorStore((s) => s.removeAnnotations);
   const setTool = useEditorStore((s) => s.setTool);
+
+  const fontsReady = useEmbeddedFontsReady();
 
   const pageH = pageSize.height;
   const width = pageSize.width * scale;
@@ -184,6 +187,9 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
           text: value,
           fontSize: 16,
           color,
+          fontFamily: DEFAULT_FONT,
+          bold: false,
+          italic: false,
         });
       }
       setTool("select");
@@ -271,7 +277,8 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
       onMouseUp={onStageMouseUp}
       style={{ cursor: isSelect ? "default" : "crosshair" }}
     >
-      <Layer>
+      {/* Remount once embedded fonts finish loading so Konva re-measures text. */}
+      <Layer key={fontsReady ? "fonts-ready" : "fonts-loading"}>
         {pageAnnotations.map((a) => (
           <AnnotationNode
             key={a.id}
@@ -363,6 +370,8 @@ function AnnotationNode({
         y={v.y}
         text={a.text}
         fontSize={a.fontSize * scale}
+        fontFamily={fontCss(a.fontFamily)}
+        fontStyle={fontStyle(a.bold, a.italic)}
         fill={a.color}
         onDblClick={() => {
           const value = window.prompt("Text", a.text);
@@ -494,6 +503,33 @@ function ImageNode({
     node.scaleY(1);
     onChange(viewRectToPdf(view, scale, pageH) as Partial<Annotation>);
   }
+}
+
+/**
+ * Preload the self-hosted embedded fonts, returning true once they're ready so
+ * the caller can re-measure text laid out with fallback metrics.
+ */
+function useEmbeddedFontsReady(): boolean {
+  // Start "ready" when there's no FontFaceSet to wait on (SSR / old browsers).
+  const [ready, setReady] = useState(
+    () => typeof document === "undefined" || !document.fonts,
+  );
+  useEffect(() => {
+    if (ready) return;
+    let cancelled = false;
+    const loads = embeddedFontFaces().map((f) =>
+      document.fonts
+        .load(`${f.italic ? "italic " : ""}${f.weight} 16px ${f.family}`)
+        .catch(() => {}),
+    );
+    Promise.all(loads).then(() => {
+      if (!cancelled) setReady(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
+  return ready;
 }
 
 /** Load a data URL into an HTMLImageElement (browser-only). */

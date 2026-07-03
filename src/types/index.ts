@@ -25,6 +25,15 @@ export type AnnotationKind = "text" | "highlight" | "rect" | "draw" | "image";
 
 export type ToolId = "select" | AnnotationKind | "signature";
 
+/** Available text fonts (three PDF standard fonts + self-hosted Google fonts). */
+export type FontId =
+  | "helvetica"
+  | "times"
+  | "courier"
+  | "roboto"
+  | "lora"
+  | "montserrat";
+
 interface AnnotationBase {
   id: string;
   /** Id of the PageItem this annotation is attached to. */
@@ -40,6 +49,10 @@ export interface TextAnnotation extends AnnotationBase {
   text: string;
   fontSize: number; // PDF points
   color: string; // #rrggbb
+  /** Font + style. Optional for back-compat; defaults to Helvetica/regular. */
+  fontFamily?: FontId;
+  bold?: boolean;
+  italic?: boolean;
 }
 
 export interface RectAnnotation extends AnnotationBase {

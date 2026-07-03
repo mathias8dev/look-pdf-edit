@@ -1,5 +1,20 @@
 @import "tailwindcss";
 
+/* Self-hosted Google fonts (vendored in public/fonts) — used by both the text
+   editor preview and the embedded PDF, so previews match the export. */
+@font-face { font-family: "Roboto"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/roboto-400.woff2") format("woff2"); }
+@font-face { font-family: "Roboto"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/roboto-700.woff2") format("woff2"); }
+@font-face { font-family: "Roboto"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/roboto-400i.woff2") format("woff2"); }
+@font-face { font-family: "Roboto"; font-weight: 700; font-style: italic; font-display: swap; src: url("/fonts/roboto-700i.woff2") format("woff2"); }
+@font-face { font-family: "Lora"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/lora-400.woff2") format("woff2"); }
+@font-face { font-family: "Lora"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/lora-700.woff2") format("woff2"); }
+@font-face { font-family: "Lora"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/lora-400i.woff2") format("woff2"); }
+@font-face { font-family: "Lora"; font-weight: 700; font-style: italic; font-display: swap; src: url("/fonts/lora-700i.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/montserrat-400.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/montserrat-700.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 400; font-style: italic; font-display: swap; src: url("/fonts/montserrat-400i.woff2") format("woff2"); }
+@font-face { font-family: "Montserrat"; font-weight: 700; font-style: italic; font-display: swap; src: url("/fonts/montserrat-700i.woff2") format("woff2"); }
+
 /* shadcn/ui design tokens (Tailwind v4). Neutral base with a blue primary. */
 :root {
   --radius: 0.5rem;
