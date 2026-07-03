@@ -65,6 +65,8 @@ interface EditorState {
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
   removeAnnotation: (id: string) => void;
   selectAnnotation: (id: string | null) => void;
+  /** Change an annotation's z-order among others on the SAME page. dir +1 = forward. */
+  reorderAnnotation: (id: string, dir: 1 | -1) => void;
 }
 
 function rotate(r: Rotation, dir: 1 | -1): Rotation {
@@ -205,4 +207,20 @@ export const useEditorStore = create<EditorState>((set) => ({
     })),
 
   selectAnnotation: (selectedAnnotationId) => set({ selectedAnnotationId }),
+
+  reorderAnnotation: (id, dir) =>
+    set((s) => {
+      const arr = [...s.annotations];
+      const idx = arr.findIndex((a) => a.id === id);
+      if (idx === -1) return s;
+      // Swap with the nearest neighbour on the same page in the given direction;
+      // array order is z-order (later = drawn on top).
+      let j = idx + dir;
+      while (j >= 0 && j < arr.length && arr[j].pageId !== arr[idx].pageId) {
+        j += dir;
+      }
+      if (j < 0 || j >= arr.length) return s;
+      [arr[idx], arr[j]] = [arr[j], arr[idx]];
+      return { annotations: arr };
+    }),
 }));

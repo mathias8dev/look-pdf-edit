@@ -222,4 +222,26 @@ describe("editor-store annotations", () => {
     get().select(pid);
     expect(get().selectedAnnotationId).toBeNull();
   });
+
+  it("reorderAnnotation moves z-order among same-page annotations only", () => {
+    loadPages(2);
+    const [p0, p1] = get().pages.map((p) => p.id);
+    // page0: a, b ; page1: c ; array order = z-order (later = on top)
+    get().addAnnotation(textAnn("a", p0));
+    get().addAnnotation(textAnn("c", p1));
+    get().addAnnotation(textAnn("b", p0));
+    // bring "a" forward: it should swap with the next page0 item ("b"),
+    // skipping the page1 item ("c") in between.
+    get().reorderAnnotation("a", 1);
+    expect(get().annotations.map((x) => x.id)).toEqual(["b", "c", "a"]);
+  });
+
+  it("reorderAnnotation is a no-op at the top of a page's stack", () => {
+    loadPages(1);
+    const pid = get().pages[0].id;
+    get().addAnnotation(textAnn("a", pid));
+    get().addAnnotation(textAnn("b", pid));
+    get().reorderAnnotation("b", 1); // already top-most
+    expect(get().annotations.map((x) => x.id)).toEqual(["a", "b"]);
+  });
 });

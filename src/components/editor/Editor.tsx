@@ -12,6 +12,7 @@ import Thumbnails from "./Thumbnails";
 import PageCanvas from "./PageCanvas";
 import SignatureDialog from "./SignatureDialog";
 import FormPanel from "./FormPanel";
+import ObjectsPanel from "./ObjectsPanel";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
 // Konva is browser-only (touches window/canvas at module load), so the overlay
@@ -28,6 +29,7 @@ export default function Editor() {
   const [loading, setLoading] = useState(false);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [objectsOpen, setObjectsOpen] = useState(false);
 
   const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
@@ -76,6 +78,7 @@ export default function Editor() {
   const hasDoc = docs.length > 0;
   const showSignature = activeTool === "signature" && !!selected && !!pageSize;
   const showForm = formOpen && formFields.length > 0 && !!selectedSource;
+  const showObjects = objectsOpen && hasDoc && !!selected;
 
   return (
     <TooltipProvider>
@@ -84,6 +87,8 @@ export default function Editor() {
         hasForm={formFields.length > 0}
         formOpen={formOpen}
         onToggleForm={() => setFormOpen((o) => !o)}
+        objectsOpen={objectsOpen}
+        onToggleObjects={() => setObjectsOpen((o) => !o)}
       />
       <div className="flex min-h-0 flex-1">
         {hasDoc && <Thumbnails />}
@@ -127,6 +132,9 @@ export default function Editor() {
             <Uploader onFile={handleFile} />
           )}
         </main>
+        {showObjects && selected && (
+          <ObjectsPanel pageId={selected.id} onClose={() => setObjectsOpen(false)} />
+        )}
         {showForm && selectedSource && (
           <FormPanel
             docId={selectedSource.id}

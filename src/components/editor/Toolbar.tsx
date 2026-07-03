@@ -7,6 +7,7 @@ import {
   FilePlus2,
   FileDown,
   FileText,
+  Layers,
   Scissors,
   Loader2,
   MousePointer2,
@@ -31,6 +32,8 @@ interface Props {
   hasForm: boolean;
   formOpen: boolean;
   onToggleForm: () => void;
+  objectsOpen: boolean;
+  onToggleObjects: () => void;
 }
 
 const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
@@ -42,7 +45,13 @@ const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
   { id: "signature", label: "Signature", Icon: Signature },
 ];
 
-export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
+export default function Toolbar({
+  hasForm,
+  formOpen,
+  onToggleForm,
+  objectsOpen,
+  onToggleObjects,
+}: Props) {
   const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
   const annotations = useEditorStore((s) => s.annotations);
@@ -200,6 +209,9 @@ export default function Toolbar({ hasForm, formOpen, onToggleForm }: Props) {
             </TipButton>
             <TipButton label="Split before current page" disabled={!canSplit} onClick={handleSplit}>
               <Scissors className="size-4" />
+            </TipButton>
+            <TipButton label="Objects" active={objectsOpen} onClick={onToggleObjects}>
+              <Layers className="size-4" />
             </TipButton>
             {hasForm && (
               <TipButton label="Fill form fields" active={formOpen} onClick={onToggleForm}>
