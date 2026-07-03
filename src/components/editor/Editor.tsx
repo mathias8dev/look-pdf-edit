@@ -25,8 +25,7 @@ export default function Editor() {
   const [loading, setLoading] = useState(false);
   const [pageSize, setPageSize] = useState<PageSize | null>(null);
 
-  const fileName = useEditorStore((s) => s.fileName);
-  const doc = useEditorStore((s) => s.pdfDoc);
+  const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
   const selectedId = useEditorStore((s) => s.selectedId);
   const scale = useEditorStore((s) => s.scale);
@@ -35,19 +34,22 @@ export default function Editor() {
   const loadDocument = useEditorStore((s) => s.loadDocument);
 
   const selected = pages.find((p) => p.id === selectedId);
+  // The pdf.js document the selected page belongs to (assembly can mix docs).
+  const selectedDoc =
+    (selected && docs.find((d) => d.id === selected.docId)?.pdfDoc) || null;
   const selectedSrc = selected?.srcIndex;
 
   // Fetch the selected page's intrinsic (unrotated) size in PDF points.
   useEffect(() => {
     let cancelled = false;
-    if (!doc || selectedSrc == null) return;
-    getPageSize(doc, selectedSrc + 1).then((size) => {
+    if (!selectedDoc || selectedSrc == null) return;
+    getPageSize(selectedDoc, selectedSrc + 1).then((size) => {
       if (!cancelled) setPageSize(size);
     });
     return () => {
       cancelled = true;
     };
-  }, [doc, selectedSrc]);
+  }, [selectedDoc, selectedSrc]);
 
   async function handleFile(file: File) {
     setLoading(true);
@@ -63,20 +65,20 @@ export default function Editor() {
     }
   }
 
-  const hasDoc = !!fileName && !!doc;
+  const hasDoc = docs.length > 0;
   const showSignature = activeTool === "signature" && !!selected && !!pageSize;
 
   return (
     <div className="flex h-dvh flex-col bg-neutral-900 text-neutral-100">
       <Toolbar />
       <div className="flex min-h-0 flex-1">
-        {hasDoc && doc && <Thumbnails doc={doc} />}
+        {hasDoc && <Thumbnails />}
         <main className="min-h-0 flex-1 overflow-auto">
           {loading ? (
             <div className="flex h-full items-center justify-center text-neutral-500">
               Opening PDF…
             </div>
-          ) : hasDoc && doc && selected && pageSize ? (
+          ) : hasDoc && selectedDoc && selected && pageSize ? (
             <div className="flex min-h-full justify-center bg-neutral-800 p-8">
               <div className="relative">
                 {selected.rotation !== 0 && (
@@ -92,7 +94,7 @@ export default function Editor() {
                   {/* Main view renders UNROTATED so annotation coordinates align
                       with the overlay; page rotation is baked in on export. */}
                   <PageCanvas
-                    doc={doc}
+                    doc={selectedDoc}
                     pageNumber={selected.srcIndex + 1}
                     rotation={0}
                     scale={scale}

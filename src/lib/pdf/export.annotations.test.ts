@@ -5,8 +5,10 @@ import { buildEditedPdf } from "./export";
 import { makePdf } from "./test-utils";
 import type { Annotation, PageItem } from "@/types";
 
+const DOC = "d0";
+
 function page(id: string, srcIndex: number): PageItem {
-  return { id, srcIndex, rotation: 0 };
+  return { id, docId: DOC, srcIndex, rotation: 0 };
 }
 
 /** pdf-lib writes drawn text as a hex string (`<48454C…> Tj`). */
@@ -62,7 +64,7 @@ describe("buildEditedPdf with annotations", () => {
       fontSize: 12,
       color: "#000000",
     };
-    const out = await buildEditedPdf(src, [page("p0", 0)], [ann]);
+    const out = await buildEditedPdf({ [DOC]: src }, [page("p0", 0)], [ann]);
     expect(decode(out).toLowerCase()).toContain(hex("HELLOPDF"));
   });
 
@@ -73,7 +75,7 @@ describe("buildEditedPdf with annotations", () => {
       { id: "a2", pageId: "gone", kind: "text", x: 10, y: 100, text: "DROPME", fontSize: 10, color: "#000" },
     ];
     // Only the "keep" page item is exported; "gone" is deleted.
-    const out = await buildEditedPdf(src, [page("keep", 0)], anns);
+    const out = await buildEditedPdf({ [DOC]: src }, [page("keep", 0)], anns);
     const text = decode(out).toLowerCase();
     expect(text).toContain(hex("KEEPME"));
     expect(text).not.toContain(hex("DROPME"));
@@ -81,10 +83,10 @@ describe("buildEditedPdf with annotations", () => {
 
   it("embeds an image annotation as an XObject", async () => {
     const src = await makePdf(1);
-    const withImg = await buildEditedPdf(src, [page("p0", 0)], [
+    const withImg = await buildEditedPdf({ [DOC]: src }, [page("p0", 0)], [
       { id: "i1", pageId: "p0", kind: "image", x: 10, y: 10, w: 50, h: 50, dataUrl: PNG_1PX },
     ]);
-    const plain = await buildEditedPdf(src, [page("p0", 0)]);
+    const plain = await buildEditedPdf({ [DOC]: src }, [page("p0", 0)]);
     // The image adds an XObject and real bytes.
     expect(decode(withImg)).toContain("/XObject");
     expect(withImg.byteLength).toBeGreaterThan(plain.byteLength);
@@ -99,14 +101,14 @@ describe("buildEditedPdf with annotations", () => {
       { id: "d", pageId: "p0", kind: "draw", points: [0, 0, 10, 10, 20, 5], color: "#0000ff", strokeWidth: 3 },
       { id: "i", pageId: "p0", kind: "image", x: 0, y: 0, w: 20, h: 20, dataUrl: PNG_1PX },
     ];
-    const out = await buildEditedPdf(src, [page("p0", 0)], anns);
+    const out = await buildEditedPdf({ [DOC]: src }, [page("p0", 0)], anns);
     const reloaded = await PDFDocument.load(out);
     expect(reloaded.getPageCount()).toBe(1);
   });
 
   it("keeps working when no annotations are supplied (back-compat)", async () => {
     const src = await makePdf(2);
-    const out = await buildEditedPdf(src, [page("p0", 0), page("p1", 1)]);
+    const out = await buildEditedPdf({ [DOC]: src }, [page("p0", 0), page("p1", 1)]);
     const reloaded = await PDFDocument.load(out);
     expect(reloaded.getPageCount()).toBe(2);
   });

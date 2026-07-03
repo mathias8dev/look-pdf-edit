@@ -5,12 +5,17 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 import type { Annotation, PageItem, Rotation, ToolId } from "@/types";
 import { nextId } from "@/lib/utils";
 
+/** An uploaded source PDF: original bytes (for pdf-lib) + live pdf.js doc. */
+export interface SourceDoc {
+  id: string;
+  fileName: string;
+  bytes: Uint8Array;
+  pdfDoc: PDFDocumentProxy;
+}
+
 interface EditorState {
-  fileName: string | null;
-  /** Original uploaded PDF bytes, kept intact for export. */
-  originalBytes: Uint8Array | null;
-  /** Live pdf.js document for rendering. Non-persisted; cleared on reset. */
-  pdfDoc: PDFDocumentProxy | null;
+  /** Uploaded source documents, keyed for lookup during render/export. */
+  docs: SourceDoc[];
   pages: PageItem[];
   selectedId: string | null;
 
@@ -23,11 +28,10 @@ interface EditorState {
   /** Zoom factor for the main editing view. */
   scale: number;
 
-  loadDocument: (
-    fileName: string,
-    bytes: Uint8Array,
-    doc: PDFDocumentProxy,
-  ) => void;
+  /** Load the first document, replacing any current session. */
+  loadDocument: (fileName: string, bytes: Uint8Array, doc: PDFDocumentProxy) => void;
+  /** Append another document's pages to the end of the assembly (merge). */
+  addDocument: (fileName: string, bytes: Uint8Array, doc: PDFDocumentProxy) => void;
   reset: () => void;
 
   select: (id: string) => void;
@@ -49,50 +53,55 @@ function rotate(r: Rotation, dir: 1 | -1): Rotation {
   return ((((r + dir * 90) % 360) + 360) % 360) as Rotation;
 }
 
+/** Build one PageItem per page in a freshly-loaded source document. */
+function pagesForDoc(docId: string, pageCount: number): PageItem[] {
+  return Array.from({ length: pageCount }, (_, i) => ({
+    id: nextId("page"),
+    docId,
+    srcIndex: i,
+    rotation: 0,
+  }));
+}
+
 const DEFAULT_COLOR = "#ef4444";
 
-export const useEditorStore = create<EditorState>((set) => ({
-  fileName: null,
-  originalBytes: null,
-  pdfDoc: null,
-  pages: [],
+const EMPTY = {
+  docs: [] as SourceDoc[],
+  pages: [] as PageItem[],
   selectedId: null,
-
-  annotations: [],
+  annotations: [] as Annotation[],
   selectedAnnotationId: null,
-  activeTool: "select",
+  activeTool: "select" as ToolId,
+};
+
+export const useEditorStore = create<EditorState>((set) => ({
+  ...EMPTY,
   color: DEFAULT_COLOR,
   scale: 1.4,
 
   loadDocument: (fileName, bytes, doc) => {
-    const pages: PageItem[] = Array.from({ length: doc.numPages }, (_, i) => ({
-      id: nextId("page"),
-      srcIndex: i,
-      rotation: 0,
-    }));
+    const source: SourceDoc = { id: nextId("doc"), fileName, bytes, pdfDoc: doc };
+    const pages = pagesForDoc(source.id, doc.numPages);
     set({
-      fileName,
-      originalBytes: bytes,
-      pdfDoc: doc,
+      ...EMPTY,
+      docs: [source],
       pages,
       selectedId: pages[0]?.id ?? null,
-      annotations: [],
-      selectedAnnotationId: null,
-      activeTool: "select",
     });
   },
 
-  reset: () =>
-    set({
-      fileName: null,
-      originalBytes: null,
-      pdfDoc: null,
-      pages: [],
-      selectedId: null,
-      annotations: [],
-      selectedAnnotationId: null,
-      activeTool: "select",
+  addDocument: (fileName, bytes, doc) =>
+    set((s) => {
+      const source: SourceDoc = { id: nextId("doc"), fileName, bytes, pdfDoc: doc };
+      const newPages = pagesForDoc(source.id, doc.numPages);
+      return {
+        docs: [...s.docs, source],
+        pages: [...s.pages, ...newPages],
+        selectedId: s.selectedId ?? newPages[0]?.id ?? null,
+      };
     }),
+
+  reset: () => set({ ...EMPTY }),
 
   select: (id) => set({ selectedId: id, selectedAnnotationId: null }),
 
@@ -112,9 +121,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       if (selectedId === id) {
         selectedId = pages[Math.min(idx, pages.length - 1)]?.id ?? null;
       }
-      // Drop annotations attached to the removed page.
+      // Drop annotations on the removed page, and any source doc no longer used.
       const annotations = s.annotations.filter((a) => a.pageId !== id);
-      return { pages, selectedId, annotations };
+      const usedDocs = new Set(pages.map((p) => p.docId));
+      const docs = s.docs.filter((d) => usedDocs.has(d.id));
+      return { pages, selectedId, annotations, docs };
     }),
 
   movePage: (id, dir) =>

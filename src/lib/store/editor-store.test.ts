@@ -5,10 +5,11 @@ import type { Annotation } from "@/types";
 const bytes = new Uint8Array([1, 2, 3]);
 const get = () => useEditorStore.getState();
 
+// Minimal pdf.js document stand-in — the store only reads numPages.
+const fakeDoc = (n: number) => ({ numPages: n }) as import("pdfjs-dist").PDFDocumentProxy;
+
 function loadPages(n: number) {
-  // Minimal pdf.js document stand-in — the store only reads numPages.
-  const fakeDoc = { numPages: n } as import("pdfjs-dist").PDFDocumentProxy;
-  get().loadDocument("doc.pdf", bytes, fakeDoc);
+  get().loadDocument("doc.pdf", bytes, fakeDoc(n));
 }
 
 /** Convenience: the current page order expressed as source indices. */
@@ -21,18 +22,27 @@ describe("editor-store", () => {
 
   it("loadDocument creates one page item per source page and selects the first", () => {
     loadPages(3);
-    expect(get().fileName).toBe("doc.pdf");
-    expect(get().originalBytes).toBe(bytes);
+    expect(get().docs).toHaveLength(1);
+    expect(get().docs[0].fileName).toBe("doc.pdf");
+    expect(get().docs[0].bytes).toBe(bytes);
     expect(order()).toEqual([0, 1, 2]);
+    // Every page is attached to the single loaded document.
+    expect(get().pages.every((p) => p.docId === get().docs[0].id)).toBe(true);
     expect(get().pages.every((p) => p.rotation === 0)).toBe(true);
     expect(get().selectedId).toBe(get().pages[0].id);
+  });
+
+  it("loadDocument replaces any previous session", () => {
+    loadPages(3);
+    loadPages(2);
+    expect(get().docs).toHaveLength(1);
+    expect(get().pages).toHaveLength(2);
   });
 
   it("reset clears everything", () => {
     loadPages(2);
     get().reset();
-    expect(get().fileName).toBeNull();
-    expect(get().originalBytes).toBeNull();
+    expect(get().docs).toEqual([]);
     expect(get().pages).toEqual([]);
     expect(get().selectedId).toBeNull();
   });
@@ -90,6 +100,45 @@ describe("editor-store", () => {
     get().deletePage(id);
     expect(get().pages).toEqual([]);
     expect(get().selectedId).toBeNull();
+  });
+});
+
+describe("editor-store multi-document assembly", () => {
+  beforeEach(() => {
+    get().reset();
+  });
+
+  it("addDocument appends a second doc's pages, keeping distinct docIds", () => {
+    loadPages(2);
+    const firstDocId = get().docs[0].id;
+    get().addDocument("second.pdf", new Uint8Array([9]), fakeDoc(3));
+    expect(get().docs).toHaveLength(2);
+    expect(get().pages).toHaveLength(5);
+    const secondDocId = get().docs[1].id;
+    expect(secondDocId).not.toBe(firstDocId);
+    // First two pages from doc 1, next three from doc 2.
+    expect(get().pages.map((p) => p.docId)).toEqual([
+      firstDocId,
+      firstDocId,
+      secondDocId,
+      secondDocId,
+      secondDocId,
+    ]);
+  });
+
+  it("addDocument into an empty session selects the first page", () => {
+    get().addDocument("first.pdf", bytes, fakeDoc(2));
+    expect(get().selectedId).toBe(get().pages[0].id);
+  });
+
+  it("prunes a source doc once its last page is deleted", () => {
+    loadPages(1);
+    get().addDocument("second.pdf", new Uint8Array([9]), fakeDoc(1));
+    const [d0] = get().docs.map((d) => d.id);
+    const firstDocPage = get().pages.find((p) => p.docId === d0)!;
+    get().deletePage(firstDocPage.id);
+    expect(get().docs.map((d) => d.id)).not.toContain(d0);
+    expect(get().docs).toHaveLength(1);
   });
 });
 

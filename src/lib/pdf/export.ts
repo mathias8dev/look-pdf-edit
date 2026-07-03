@@ -20,30 +20,41 @@ function groupByPage(annotations: Annotation[]): Map<string, Annotation[]> {
   return map;
 }
 
+/** docId -> original bytes for every source document in the assembly. */
+export type SourceBytes = Record<string, Uint8Array>;
+
 /**
- * Rebuild a PDF from the original bytes applying the current page list:
- * reorder, delete (pages simply absent from `pages`), rotation deltas, and
- * any annotations attached to each page. The original bytes are never mutated.
+ * Rebuild a PDF from one or more source documents applying the given page
+ * list: reorder, delete (pages simply absent from `pages`), cross-document
+ * assembly (each page copied from its own `docId`), rotation deltas, and any
+ * annotations attached to each page. Source bytes are never mutated.
+ *
+ * Extraction and splitting are just this function over a subset of `pages`.
  */
 export async function buildEditedPdf(
-  originalBytes: Uint8Array,
+  sources: SourceBytes,
   pages: PageItem[],
   annotations: Annotation[] = [],
 ): Promise<Uint8Array> {
-  const src = await PDFDocument.load(originalBytes);
   const out = await PDFDocument.create();
-
-  const copied = await out.copyPages(
-    src,
-    pages.map((p) => p.srcIndex),
-  );
-
+  const loaded = new Map<string, PDFDocument>();
   const byPage = groupByPage(annotations);
   let font: PDFFont | null = null;
 
-  for (let i = 0; i < copied.length; i++) {
-    const page = copied[i];
-    const item = pages[i];
+  async function sourceDoc(docId: string): Promise<PDFDocument> {
+    let doc = loaded.get(docId);
+    if (!doc) {
+      const bytes = sources[docId];
+      if (!bytes) throw new Error(`Missing source bytes for doc "${docId}"`);
+      doc = await PDFDocument.load(bytes);
+      loaded.set(docId, doc);
+    }
+    return doc;
+  }
+
+  for (const item of pages) {
+    const src = await sourceDoc(item.docId);
+    const [page] = await out.copyPages(src, [item.srcIndex]);
 
     const delta = item.rotation as Rotation;
     const base = page.getRotation().angle;

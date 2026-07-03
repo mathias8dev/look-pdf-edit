@@ -1,9 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   Download,
+  FilePlus,
   FilePlus2,
+  FileDown,
+  Scissors,
   Loader2,
   MousePointer2,
   Type,
@@ -16,7 +19,8 @@ import {
   ZoomOut,
 } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor-store";
-import { buildEditedPdf, downloadBytes } from "@/lib/pdf/export";
+import { buildEditedPdf, downloadBytes, type SourceBytes } from "@/lib/pdf/export";
+import { openPdf } from "@/lib/pdf/pdfjs";
 import type { ToolId } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -30,30 +34,40 @@ const TOOLS: { id: ToolId; label: string; Icon: typeof Type }[] = [
 ];
 
 export default function Toolbar() {
-  const fileName = useEditorStore((s) => s.fileName);
-  const originalBytes = useEditorStore((s) => s.originalBytes);
+  const docs = useEditorStore((s) => s.docs);
   const pages = useEditorStore((s) => s.pages);
   const annotations = useEditorStore((s) => s.annotations);
   const activeTool = useEditorStore((s) => s.activeTool);
   const color = useEditorStore((s) => s.color);
   const scale = useEditorStore((s) => s.scale);
+  const selectedId = useEditorStore((s) => s.selectedId);
   const selectedAnnotationId = useEditorStore((s) => s.selectedAnnotationId);
   const setTool = useEditorStore((s) => s.setTool);
   const setColor = useEditorStore((s) => s.setColor);
   const setScale = useEditorStore((s) => s.setScale);
   const removeAnnotation = useEditorStore((s) => s.removeAnnotation);
+  const addDocument = useEditorStore((s) => s.addDocument);
   const reset = useEditorStore((s) => s.reset);
 
   const [exporting, setExporting] = useState(false);
-  const hasDoc = !!fileName && pages.length > 0;
-  const outName = fileName ? fileName.replace(/\.pdf$/i, "") + "-edited.pdf" : "edited.pdf";
+  const addInputRef = useRef<HTMLInputElement>(null);
 
-  async function handleDownload() {
-    if (!originalBytes || pages.length === 0) return;
+  const hasDoc = pages.length > 0;
+  const baseName = docs[0]?.fileName.replace(/\.pdf$/i, "") ?? "document";
+  const title = docs.length === 1 ? docs[0].fileName : `${docs.length} PDFs`;
+
+  const selectedIndex = pages.findIndex((p) => p.id === selectedId);
+  const canSplit = selectedIndex > 0; // both halves non-empty
+
+  function sources(): SourceBytes {
+    return Object.fromEntries(docs.map((d) => [d.id, d.bytes]));
+  }
+
+  async function exportPages(pageSubset: typeof pages, name: string) {
     setExporting(true);
     try {
-      const bytes = await buildEditedPdf(originalBytes, pages, annotations);
-      downloadBytes(bytes, outName);
+      const bytes = await buildEditedPdf(sources(), pageSubset, annotations);
+      downloadBytes(bytes, name);
     } catch (err) {
       console.error(err);
       alert("Export failed — see console.");
@@ -62,12 +76,32 @@ export default function Toolbar() {
     }
   }
 
+  async function handleAddPdf(file: File) {
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const doc = await openPdf(bytes);
+      addDocument(file.name, bytes, doc);
+    } catch (err) {
+      console.error(err);
+      alert("Could not open that PDF — see console.");
+    }
+  }
+
+  function handleSplit() {
+    if (selectedIndex <= 0) return;
+    const part1 = pages.slice(0, selectedIndex);
+    const part2 = pages.slice(selectedIndex);
+    exportPages(part1, `${baseName}-part1.pdf`).then(() =>
+      exportPages(part2, `${baseName}-part2.pdf`),
+    );
+  }
+
   return (
-    <header className="flex h-14 shrink-0 items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4">
-      <div className="flex items-center gap-3">
+    <header className="flex h-14 shrink-0 items-center justify-between gap-4 border-b border-neutral-800 bg-neutral-950 px-4">
+      <div className="flex min-w-0 items-center gap-3">
         <span className="text-sm font-semibold text-neutral-100">look-pdf-edit</span>
-        {fileName && (
-          <span className="max-w-[28ch] truncate text-sm text-neutral-500">{fileName}</span>
+        {hasDoc && (
+          <span className="max-w-[24ch] truncate text-sm text-neutral-500">{title}</span>
         )}
       </div>
 
@@ -133,6 +167,42 @@ export default function Toolbar() {
       )}
 
       <div className="flex items-center gap-2">
+        {hasDoc && (
+          <>
+            <input
+              ref={addInputRef}
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleAddPdf(file);
+                e.target.value = "";
+              }}
+            />
+            <IconAction title="Add PDF (merge)" onClick={() => addInputRef.current?.click()}>
+              <FilePlus className="h-4 w-4" />
+            </IconAction>
+            <IconAction
+              title="Extract current page"
+              disabled={selectedIndex < 0}
+              onClick={() =>
+                exportPages([pages[selectedIndex]], `${baseName}-page-${selectedIndex + 1}.pdf`)
+              }
+            >
+              <FileDown className="h-4 w-4" />
+            </IconAction>
+            <IconAction
+              title="Split before current page"
+              disabled={!canSplit}
+              onClick={handleSplit}
+            >
+              <Scissors className="h-4 w-4" />
+            </IconAction>
+            <div className="mx-1 h-6 w-px bg-neutral-800" />
+          </>
+        )}
+
         <button
           type="button"
           onClick={reset}
@@ -143,7 +213,7 @@ export default function Toolbar() {
         </button>
         <button
           type="button"
-          onClick={handleDownload}
+          onClick={() => exportPages(pages, `${baseName}-edited.pdf`)}
           disabled={exporting || pages.length === 0}
           className="flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-500 disabled:opacity-50"
         >
@@ -156,5 +226,29 @@ export default function Toolbar() {
         </button>
       </div>
     </header>
+  );
+}
+
+function IconAction({
+  children,
+  onClick,
+  title,
+  disabled,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      title={title}
+      onClick={onClick}
+      disabled={disabled}
+      className="rounded-md p-2 text-neutral-300 transition-colors hover:bg-neutral-800 disabled:opacity-40 disabled:hover:bg-transparent"
+    >
+      {children}
+    </button>
   );
 }
