@@ -1,36 +1,71 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# look-pdf-edit
 
-## Getting Started
+A browser-based PDF editor. Upload a PDF and edit it — **everything runs client-side**; files never leave the browser.
 
-First, run the development server:
+## Status
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+**Vertical slice working:** upload → render → page assembly (reorder / rotate / delete) → download edited PDF.
+
+Planned next: annotations (text, highlight, freehand, shapes, signatures) via a Konva overlay layer; merge/split/insert/extract; form filling.
+
+## Stack
+
+| Concern | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router, Turbopack) |
+| PDF rendering | [pdf.js](https://github.com/mozilla/pdf.js) (`pdfjs-dist`) |
+| PDF manipulation | [pdf-lib](https://pdf-lib.js.org/) |
+| Annotation layer (planned) | Konva / react-konva |
+| State | Zustand |
+| Styling | Tailwind CSS v4 |
+| Icons | lucide-react |
+
+## How it works
+
+```
+Upload → File → Uint8Array (kept in memory)
+   │
+   ├─ pdf.js  → renders each page to <canvas> (thumbnails + main view)
+   │
+   └─ pdf-lib → on Download, rebuilds a fresh PDF from the ORIGINAL bytes,
+                applying page order, deletions, and rotation deltas
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+- The original bytes are never mutated. Page operations are modeled as a list
+  of `{ srcIndex, rotation }` items (`src/lib/store/editor-store.ts`); export
+  copies pages into a new document in that order (`src/lib/pdf/export.ts`).
+- `pdfjs-dist` is imported **lazily** (`src/lib/pdf/pdfjs.ts`) so it never
+  evaluates during server-side prerender (it touches `DOMMatrix` at module load).
+- The pdf.js worker is copied to `public/pdf.worker.min.mjs` — no CDN, works offline.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Project structure
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```
+src/
+  app/                 layout.tsx, page.tsx (renders <Editor/>)
+  components/editor/
+    Editor.tsx         orchestrator: file load, layout, main viewport
+    Uploader.tsx       drag-and-drop / click upload
+    Toolbar.tsx        New + Download (pdf-lib export)
+    Thumbnails.tsx     page sidebar: reorder / rotate / delete
+    PageCanvas.tsx     reusable pdf.js page → canvas renderer
+  lib/
+    pdf/pdfjs.ts       lazy pdf.js loader + renderPage
+    pdf/export.ts      pdf-lib rebuild + download
+    store/editor-store.ts   Zustand state
+    utils.ts           cn(), id helper
+  types/index.ts       PageItem, Rotation
+```
 
-## Learn More
+## Running locally
 
-To learn more about Next.js, take a look at the following resources:
+Node 20.9+ required.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+```bash
+npm run dev     # http://localhost:3000
+npm run build
+npm start
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+> On this machine Node is managed by nvm-windows and may not be on PATH in a
+> fresh shell. Activate it first: `nvm use 26.3.1` (adds `C:\Program Files\nodejs`).
