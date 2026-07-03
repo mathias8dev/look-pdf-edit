@@ -30,6 +30,19 @@ export async function openPdf(bytes: Uint8Array): Promise<PDFDocumentProxy> {
   return lib.getDocument({ data: copy }).promise;
 }
 
+/**
+ * Intrinsic page size in PDF points (unrotated). Used to size the annotation
+ * overlay and convert between PDF and view coordinates.
+ */
+export async function getPageSize(
+  doc: PDFDocumentProxy,
+  pageNumber: number,
+): Promise<{ width: number; height: number }> {
+  const page = await doc.getPage(pageNumber);
+  const { width, height } = page.getViewport({ scale: 1, rotation: 0 });
+  return { width, height };
+}
+
 /** Render a single page (1-based) into a canvas at the given scale + rotation. */
 export async function renderPage(
   doc: PDFDocumentProxy,

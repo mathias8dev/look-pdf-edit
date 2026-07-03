@@ -1,30 +1,151 @@
-import { PDFDocument, degrees } from "pdf-lib";
-import type { PageItem, Rotation } from "@/types";
+import {
+  PDFDocument,
+  PDFPage,
+  StandardFonts,
+  degrees,
+  rgb,
+  type PDFFont,
+} from "pdf-lib";
+import type { Annotation, PageItem, Rotation } from "@/types";
+import { hexToRgb01, mapFlatPoints } from "./coords";
+
+/** Group annotations by the page id they are attached to. */
+function groupByPage(annotations: Annotation[]): Map<string, Annotation[]> {
+  const map = new Map<string, Annotation[]>();
+  for (const a of annotations) {
+    const list = map.get(a.pageId);
+    if (list) list.push(a);
+    else map.set(a.pageId, [a]);
+  }
+  return map;
+}
 
 /**
  * Rebuild a PDF from the original bytes applying the current page list:
- * reorder, delete (pages simply absent from `pages`), and rotation deltas.
- * The original bytes are never mutated — we copy pages into a fresh doc.
+ * reorder, delete (pages simply absent from `pages`), rotation deltas, and
+ * any annotations attached to each page. The original bytes are never mutated.
  */
 export async function buildEditedPdf(
   originalBytes: Uint8Array,
   pages: PageItem[],
+  annotations: Annotation[] = [],
 ): Promise<Uint8Array> {
   const src = await PDFDocument.load(originalBytes);
   const out = await PDFDocument.create();
 
-  const srcIndices = pages.map((p) => p.srcIndex);
-  const copied = await out.copyPages(src, srcIndices);
+  const copied = await out.copyPages(
+    src,
+    pages.map((p) => p.srcIndex),
+  );
 
-  copied.forEach((page, i) => {
-    const delta = pages[i].rotation as Rotation;
+  const byPage = groupByPage(annotations);
+  let font: PDFFont | null = null;
+
+  for (let i = 0; i < copied.length; i++) {
+    const page = copied[i];
+    const item = pages[i];
+
+    const delta = item.rotation as Rotation;
     const base = page.getRotation().angle;
     page.setRotation(degrees((base + delta) % 360));
+
+    const anns = byPage.get(item.id);
+    if (anns && anns.length) {
+      if (!font) font = await out.embedFont(StandardFonts.Helvetica);
+      for (const a of anns) {
+        await drawAnnotation(out, page, a, font);
+      }
+    }
+
     out.addPage(page);
-  });
+  }
 
   return out.save();
 }
+
+async function drawAnnotation(
+  doc: PDFDocument,
+  page: PDFPage,
+  a: Annotation,
+  font: PDFFont,
+): Promise<void> {
+  switch (a.kind) {
+    case "text": {
+      const c = hexToRgb01(a.color);
+      // Stored y is the top of the text box; pdf-lib anchors at the baseline.
+      page.drawText(a.text, {
+        x: a.x,
+        y: a.y - a.fontSize,
+        size: a.fontSize,
+        font,
+        color: rgb(c.r, c.g, c.b),
+      });
+      return;
+    }
+    case "rect": {
+      const c = hexToRgb01(a.color);
+      page.drawRectangle({
+        x: a.x,
+        y: a.y,
+        width: a.w,
+        height: a.h,
+        borderColor: rgb(c.r, c.g, c.b),
+        borderWidth: a.strokeWidth,
+      });
+      return;
+    }
+    case "highlight": {
+      const c = hexToRgb01(a.color);
+      page.drawRectangle({
+        x: a.x,
+        y: a.y,
+        width: a.w,
+        height: a.h,
+        color: rgb(c.r, c.g, c.b),
+        opacity: a.opacity,
+      });
+      return;
+    }
+    case "draw": {
+      const c = hexToRgb01(a.color);
+      const pts = a.points;
+      for (let i = 0; i + 3 < pts.length; i += 2) {
+        page.drawLine({
+          start: { x: pts[i], y: pts[i + 1] },
+          end: { x: pts[i + 2], y: pts[i + 3] },
+          thickness: a.strokeWidth,
+          color: rgb(c.r, c.g, c.b),
+        });
+      }
+      return;
+    }
+    case "image": {
+      const img = await embedDataUrl(doc, a.dataUrl);
+      if (img) page.drawImage(img, { x: a.x, y: a.y, width: a.w, height: a.h });
+      return;
+    }
+  }
+}
+
+async function embedDataUrl(doc: PDFDocument, dataUrl: string) {
+  const comma = dataUrl.indexOf(",");
+  if (comma === -1) return null;
+  const header = dataUrl.slice(0, comma);
+  const bytes = base64ToBytes(dataUrl.slice(comma + 1));
+  return /image\/jpe?g/i.test(header)
+    ? doc.embedJpg(bytes)
+    : doc.embedPng(bytes);
+}
+
+function base64ToBytes(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+// Re-export so callers converting overlay geometry stay in one import site.
+export { mapFlatPoints };
 
 /** Trigger a browser download of the given bytes. */
 export function downloadBytes(bytes: Uint8Array, fileName: string) {
