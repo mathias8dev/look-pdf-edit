@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stage, Layer, Rect, Text, Line, Image as KImage, Transformer } from "react-konva";
 import type Konva from "konva";
 import type { Annotation } from "@/types";
@@ -29,20 +29,36 @@ interface DragRect {
   h: number;
 }
 
+type RegisterRef = (id: string, node: Konva.Node | null) => void;
+
+const ALL_ANCHORS = [
+  "top-left",
+  "top-center",
+  "top-right",
+  "middle-left",
+  "middle-right",
+  "bottom-left",
+  "bottom-center",
+  "bottom-right",
+];
+
 /**
  * Konva overlay for one page. Renders in view space (top-left, y-down) but
- * persists every annotation in PDF points (bottom-left, y-up), so geometry is
- * zoom-independent and rotates with the page on export. Browser-only — mounted
- * via next/dynamic({ ssr: false }).
+ * persists every annotation in PDF points (bottom-left, y-up). Supports
+ * multi-selection: click to select, shift/ctrl-click to add, Ctrl/Cmd+A to
+ * select all on the page, Delete to remove, Esc to clear.
  */
 export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
   const annotations = useEditorStore((s) => s.annotations);
   const activeTool = useEditorStore((s) => s.activeTool);
   const color = useEditorStore((s) => s.color);
-  const selectedAnnotationId = useEditorStore((s) => s.selectedAnnotationId);
+  const selectedIds = useEditorStore((s) => s.selectedAnnotationIds);
   const addAnnotation = useEditorStore((s) => s.addAnnotation);
   const updateAnnotation = useEditorStore((s) => s.updateAnnotation);
   const selectAnnotation = useEditorStore((s) => s.selectAnnotation);
+  const toggleAnnotation = useEditorStore((s) => s.toggleAnnotation);
+  const selectAnnotations = useEditorStore((s) => s.selectAnnotations);
+  const removeAnnotations = useEditorStore((s) => s.removeAnnotations);
   const setTool = useEditorStore((s) => s.setTool);
 
   const pageH = pageSize.height;
@@ -54,12 +70,91 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
     [annotations, pageId],
   );
 
+  const isSelect = activeTool === "select";
+  const multi = selectedIds.length > 1;
+
   // In-progress drawing state (view space).
   const [dragRect, setDragRect] = useState<DragRect | null>(null);
   const [freePoints, setFreePoints] = useState<number[] | null>(null);
   const origin = useRef<{ x: number; y: number } | null>(null);
 
-  const isSelect = activeTool === "select";
+  // One shared Transformer drives the selection frame + (single) resize.
+  const nodeRefs = useRef(new Map<string, Konva.Node>());
+  const trRef = useRef<Konva.Transformer>(null);
+  const registerRef = useCallback<RegisterRef>((id, node) => {
+    if (node) nodeRefs.current.set(id, node);
+    else nodeRefs.current.delete(id);
+  }, []);
+
+  useEffect(() => {
+    const tr = trRef.current;
+    if (!tr) return;
+    const nodes = selectedIds
+      .map((id) => nodeRefs.current.get(id))
+      .filter((n): n is Konva.Node => !!n);
+    tr.nodes(nodes);
+
+    // Resize handles only for a single resizable object; otherwise the
+    // Transformer is a plain multi-select frame.
+    const sole =
+      selectedIds.length === 1
+        ? pageAnnotations.find((a) => a.id === selectedIds[0])
+        : undefined;
+    const resizable =
+      sole?.kind === "rect" || sole?.kind === "highlight" || sole?.kind === "image";
+    tr.resizeEnabled(resizable);
+    tr.enabledAnchors(resizable ? ALL_ANCHORS : []);
+    tr.keepRatio(sole?.kind === "image");
+    tr.getLayer()?.batchDraw();
+  }, [selectedIds, pageAnnotations, scale]);
+
+  // Keyboard: select-all / delete / clear. Ignore while typing in a field.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.tagName === "SELECT" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      if ((e.ctrlKey || e.metaKey) && (e.key === "a" || e.key === "A")) {
+        if (pageAnnotations.length) {
+          e.preventDefault();
+          setTool("select");
+          selectAnnotations(pageAnnotations.map((a) => a.id));
+        }
+      } else if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedIds.length) {
+          e.preventDefault();
+          removeAnnotations(selectedIds);
+        }
+      } else if (e.key === "Escape") {
+        selectAnnotation(null);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [
+    pageAnnotations,
+    selectedIds,
+    selectAnnotations,
+    removeAnnotations,
+    selectAnnotation,
+    setTool,
+  ]);
+
+  function onShapeSelect(
+    id: string,
+    e: Konva.KonvaEventObject<MouseEvent | TouchEvent>,
+  ) {
+    const additive = e.evt.shiftKey || e.evt.ctrlKey || e.evt.metaKey;
+    if (additive) toggleAnnotation(id);
+    else selectAnnotation(id);
+  }
 
   function pointer(stage: Konva.Stage | null): { x: number; y: number } | null {
     return stage?.getPointerPosition() ?? null;
@@ -183,9 +278,10 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
             annotation={a}
             scale={scale}
             pageH={pageH}
-            selectable={isSelect}
-            selected={a.id === selectedAnnotationId}
-            onSelect={() => selectAnnotation(a.id)}
+            interactive={isSelect}
+            draggable={isSelect && !multi}
+            registerRef={registerRef}
+            onSelect={(e) => onShapeSelect(a.id, e)}
             onChange={(patch) => updateAnnotation(a.id, patch)}
           />
         ))}
@@ -214,6 +310,15 @@ export default function AnnotationLayer({ pageId, pageSize, scale }: Props) {
             listening={false}
           />
         )}
+
+        <Transformer
+          ref={trRef}
+          rotateEnabled={false}
+          ignoreStroke
+          borderStroke="#2563EB"
+          anchorStroke="#2563EB"
+          anchorFill="#FFFFFF"
+        />
       </Layer>
     </Stage>
   );
@@ -225,9 +330,10 @@ interface NodeProps {
   annotation: Annotation;
   scale: number;
   pageH: number;
-  selectable: boolean;
-  selected: boolean;
-  onSelect: () => void;
+  interactive: boolean;
+  draggable: boolean;
+  registerRef: RegisterRef;
+  onSelect: (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => void;
   onChange: (patch: Partial<Annotation>) => void;
 }
 
@@ -235,35 +341,23 @@ function AnnotationNode({
   annotation: a,
   scale,
   pageH,
-  selectable,
-  selected,
+  interactive,
+  draggable,
+  registerRef,
   onSelect,
   onChange,
 }: NodeProps) {
-  const shapeRef = useRef<Konva.Node>(null);
-  const trRef = useRef<Konva.Transformer>(null);
+  const common = interactive
+    ? { draggable, onMouseDown: onSelect, onTap: onSelect }
+    : { listening: false as const };
 
-  const resizable = a.kind === "rect" || a.kind === "highlight" || a.kind === "image";
-
-  // Attach the Transformer to the selected, resizable node.
-  useEffect(() => {
-    if (selected && resizable && trRef.current && shapeRef.current) {
-      trRef.current.nodes([shapeRef.current]);
-      trRef.current.getLayer()?.batchDraw();
-    }
-  }, [selected, resizable]);
-
-  const common = {
-    draggable: selectable,
-    onMouseDown: onSelect,
-    onTap: onSelect,
-  };
+  const setRef = (node: Konva.Node | null) => registerRef(a.id, node);
 
   if (a.kind === "text") {
     const v = pdfToView({ x: a.x, y: a.y }, scale, pageH);
     return (
       <Text
-        ref={shapeRef as React.Ref<Konva.Text>}
+        ref={setRef}
         {...common}
         x={v.x}
         y={v.y}
@@ -286,7 +380,7 @@ function AnnotationNode({
     const pts = mapFlatPoints(a.points, (p) => pdfToView(p, scale, pageH));
     return (
       <Line
-        ref={shapeRef as React.Ref<Konva.Line>}
+        ref={setRef}
         {...common}
         points={pts}
         stroke={a.color}
@@ -295,7 +389,6 @@ function AnnotationNode({
         lineJoin="round"
         hitStrokeWidth={12}
         onDragEnd={(e) => {
-          // Fold the drag offset back into each point, then reset the node.
           const dx = e.target.x();
           const dy = e.target.y();
           e.target.position({ x: 0, y: 0 });
@@ -316,9 +409,7 @@ function AnnotationNode({
         scale={scale}
         pageH={pageH}
         common={common}
-        shapeRef={shapeRef as React.Ref<Konva.Image>}
-        trRef={trRef}
-        selected={selected}
+        setRef={setRef}
         onChange={onChange}
       />
     );
@@ -328,35 +419,28 @@ function AnnotationNode({
   const r = pdfRectToView({ x: a.x, y: a.y, w: a.w, h: a.h }, scale, pageH);
   const isHighlight = a.kind === "highlight";
   return (
-    <>
-      <Rect
-        ref={shapeRef as React.Ref<Konva.Rect>}
-        {...common}
-        x={r.x}
-        y={r.y}
-        width={r.w}
-        height={r.h}
-        stroke={isHighlight ? undefined : a.color}
-        strokeWidth={isHighlight ? 0 : a.strokeWidth * scale}
-        fill={isHighlight ? a.color : undefined}
-        opacity={isHighlight ? a.opacity : 1}
-        onDragEnd={(e) => commitRect(e.target as Konva.Rect)}
-        onTransformEnd={(e) => commitRect(e.target as Konva.Rect)}
-      />
-      {selected && selectable && (
-        <Transformer ref={trRef} rotateEnabled={false} ignoreStroke />
-      )}
-    </>
+    <Rect
+      ref={setRef}
+      {...common}
+      x={r.x}
+      y={r.y}
+      width={r.w}
+      height={r.h}
+      stroke={isHighlight ? undefined : a.color}
+      strokeWidth={isHighlight ? 0 : a.strokeWidth * scale}
+      fill={isHighlight ? a.color : undefined}
+      opacity={isHighlight ? a.opacity : 1}
+      onDragEnd={(e) => commitRect(e.target as Konva.Rect)}
+      onTransformEnd={(e) => commitRect(e.target as Konva.Rect)}
+    />
   );
 
   function commitRect(node: Konva.Rect) {
-    const scaleX = node.scaleX();
-    const scaleY = node.scaleY();
     const view = {
       x: node.x(),
       y: node.y(),
-      w: Math.max(4, node.width() * scaleX),
-      h: Math.max(4, node.height() * scaleY),
+      w: Math.max(4, node.width() * node.scaleX()),
+      h: Math.max(4, node.height() * node.scaleY()),
     };
     node.scaleX(1);
     node.scaleY(1);
@@ -371,18 +455,14 @@ function ImageNode({
   scale,
   pageH,
   common,
-  shapeRef,
-  trRef,
-  selected,
+  setRef,
   onChange,
 }: {
   a: Extract<Annotation, { kind: "image" }>;
   scale: number;
   pageH: number;
   common: object;
-  shapeRef: React.Ref<Konva.Image>;
-  trRef: React.RefObject<Konva.Transformer | null>;
-  selected: boolean;
+  setRef: (node: Konva.Node | null) => void;
   onChange: (patch: Partial<Annotation>) => void;
 }) {
   const img = useHtmlImage(a.dataUrl);
@@ -390,22 +470,17 @@ function ImageNode({
   if (!img) return null;
 
   return (
-    <>
-      <KImage
-        ref={shapeRef}
-        {...common}
-        image={img}
-        x={r.x}
-        y={r.y}
-        width={r.w}
-        height={r.h}
-        onDragEnd={(e) => commit(e.target as Konva.Image)}
-        onTransformEnd={(e) => commit(e.target as Konva.Image)}
-      />
-      {selected && (
-        <Transformer ref={trRef} rotateEnabled={false} keepRatio />
-      )}
-    </>
+    <KImage
+      ref={setRef}
+      {...common}
+      image={img}
+      x={r.x}
+      y={r.y}
+      width={r.w}
+      height={r.h}
+      onDragEnd={(e) => commit(e.target as Konva.Image)}
+      onTransformEnd={(e) => commit(e.target as Konva.Image)}
+    />
   );
 
   function commit(node: Konva.Image) {

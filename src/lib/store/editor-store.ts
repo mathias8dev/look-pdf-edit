@@ -24,7 +24,8 @@ interface EditorState {
 
   // Annotation state (flat list; each annotation carries its pageId).
   annotations: Annotation[];
-  selectedAnnotationId: string | null;
+  /** Ids of the currently selected drawn objects (multi-select). */
+  selectedAnnotationIds: string[];
   activeTool: ToolId;
   /** Current drawing colour (#rrggbb) applied to new annotations. */
   color: string;
@@ -64,7 +65,14 @@ interface EditorState {
   addAnnotation: (a: Annotation) => void;
   updateAnnotation: (id: string, patch: Partial<Annotation>) => void;
   removeAnnotation: (id: string) => void;
+  /** Delete several objects at once (e.g. the current selection). */
+  removeAnnotations: (ids: string[]) => void;
+  /** Select exactly this object, or clear the selection when passed null. */
   selectAnnotation: (id: string | null) => void;
+  /** Add/remove one object from the selection (shift/ctrl-click). */
+  toggleAnnotation: (id: string) => void;
+  /** Replace the selection with the given set (e.g. "select all"). */
+  selectAnnotations: (ids: string[]) => void;
   /** Change an annotation's z-order among others on the SAME page. dir +1 = forward. */
   reorderAnnotation: (id: string, dir: 1 | -1) => void;
 }
@@ -90,7 +98,7 @@ const EMPTY = {
   pages: [] as PageItem[],
   selectedId: null,
   annotations: [] as Annotation[],
-  selectedAnnotationId: null,
+  selectedAnnotationIds: [] as string[],
   activeTool: "select" as ToolId,
   forms: {} as Record<string, Record<string, FieldValue>>,
 };
@@ -144,7 +152,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       },
     })),
 
-  select: (id) => set({ selectedId: id, selectedAnnotationId: null }),
+  select: (id) => set({ selectedId: id, selectedAnnotationIds: [] }),
 
   rotatePage: (id, dir) =>
     set((s) => ({
@@ -164,12 +172,14 @@ export const useEditorStore = create<EditorState>((set) => ({
       }
       // Drop annotations on the removed page, and any source doc no longer used.
       const annotations = s.annotations.filter((a) => a.pageId !== id);
+      const kept = new Set(annotations.map((a) => a.id));
+      const selectedAnnotationIds = s.selectedAnnotationIds.filter((x) => kept.has(x));
       const usedDocs = new Set(pages.map((p) => p.docId));
       const docs = s.docs.filter((d) => usedDocs.has(d.id));
       const forms = Object.fromEntries(
         Object.entries(s.forms).filter(([docId]) => usedDocs.has(docId)),
       );
-      return { pages, selectedId, annotations, docs, forms };
+      return { pages, selectedId, annotations, selectedAnnotationIds, docs, forms };
     }),
 
   movePage: (id, dir) =>
@@ -189,7 +199,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   addAnnotation: (a) =>
     set((s) => ({
       annotations: [...s.annotations, a],
-      selectedAnnotationId: a.id,
+      selectedAnnotationIds: [a.id],
     })),
 
   updateAnnotation: (id, patch) =>
@@ -202,11 +212,28 @@ export const useEditorStore = create<EditorState>((set) => ({
   removeAnnotation: (id) =>
     set((s) => ({
       annotations: s.annotations.filter((a) => a.id !== id),
-      selectedAnnotationId:
-        s.selectedAnnotationId === id ? null : s.selectedAnnotationId,
+      selectedAnnotationIds: s.selectedAnnotationIds.filter((x) => x !== id),
     })),
 
-  selectAnnotation: (selectedAnnotationId) => set({ selectedAnnotationId }),
+  removeAnnotations: (ids) =>
+    set((s) => {
+      const drop = new Set(ids);
+      return {
+        annotations: s.annotations.filter((a) => !drop.has(a.id)),
+        selectedAnnotationIds: s.selectedAnnotationIds.filter((x) => !drop.has(x)),
+      };
+    }),
+
+  selectAnnotation: (id) => set({ selectedAnnotationIds: id ? [id] : [] }),
+
+  toggleAnnotation: (id) =>
+    set((s) => ({
+      selectedAnnotationIds: s.selectedAnnotationIds.includes(id)
+        ? s.selectedAnnotationIds.filter((x) => x !== id)
+        : [...s.selectedAnnotationIds, id],
+    })),
+
+  selectAnnotations: (ids) => set({ selectedAnnotationIds: [...ids] }),
 
   reorderAnnotation: (id, dir) =>
     set((s) => {

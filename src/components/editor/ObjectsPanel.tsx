@@ -53,8 +53,10 @@ function labelFor(a: Annotation): string {
  */
 export default function ObjectsPanel({ pageId, onClose }: Props) {
   const annotations = useEditorStore((s) => s.annotations);
-  const selectedAnnotationId = useEditorStore((s) => s.selectedAnnotationId);
+  const selectedIds = useEditorStore((s) => s.selectedAnnotationIds);
   const selectAnnotation = useEditorStore((s) => s.selectAnnotation);
+  const toggleAnnotation = useEditorStore((s) => s.toggleAnnotation);
+  const selectAnnotations = useEditorStore((s) => s.selectAnnotations);
   const removeAnnotation = useEditorStore((s) => s.removeAnnotation);
   const reorderAnnotation = useEditorStore((s) => s.reorderAnnotation);
   const setTool = useEditorStore((s) => s.setTool);
@@ -65,9 +67,20 @@ export default function ObjectsPanel({ pageId, onClose }: Props) {
     [annotations, pageId],
   );
 
-  function select(id: string) {
+  const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
+  const pageSelectedCount = items.filter((a) => selectedSet.has(a.id)).length;
+  const allSelected = items.length > 0 && pageSelectedCount === items.length;
+
+  function select(id: string, additive: boolean) {
     setTool("select");
-    selectAnnotation(id);
+    if (additive) toggleAnnotation(id);
+    else selectAnnotation(id);
+  }
+
+  function toggleAll() {
+    setTool("select");
+    if (allSelected) selectAnnotation(null);
+    else selectAnnotations(items.map((a) => a.id));
   }
 
   return (
@@ -82,6 +95,17 @@ export default function ObjectsPanel({ pageId, onClose }: Props) {
         </Button>
       </div>
 
+      {items.length > 0 && (
+        <div className="flex items-center justify-between border-b border-border px-3 py-2 text-xs text-muted-foreground">
+          <span>
+            {pageSelectedCount > 0 ? `${pageSelectedCount} selected` : "None selected"}
+          </span>
+          <Button variant="ghost" size="sm" className="h-6 px-2 text-xs" onClick={toggleAll}>
+            {allSelected ? "Deselect all" : "Select all"}
+          </Button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-2">
         {items.length === 0 && (
           <p className="px-2 py-3 text-sm text-muted-foreground">
@@ -91,7 +115,7 @@ export default function ObjectsPanel({ pageId, onClose }: Props) {
 
         {items.map((a) => {
           const Icon = KIND_ICON[a.kind];
-          const selected = a.id === selectedAnnotationId;
+          const selected = selectedSet.has(a.id);
           return (
             <div
               key={a.id}
@@ -102,7 +126,7 @@ export default function ObjectsPanel({ pageId, onClose }: Props) {
             >
               <button
                 type="button"
-                onClick={() => select(a.id)}
+                onClick={(e) => select(a.id, e.metaKey || e.ctrlKey || e.shiftKey)}
                 className="flex min-w-0 flex-1 items-center gap-2 text-left"
               >
                 <span

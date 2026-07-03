@@ -60,11 +60,11 @@ export default function Toolbar({
   const color = useEditorStore((s) => s.color);
   const scale = useEditorStore((s) => s.scale);
   const selectedId = useEditorStore((s) => s.selectedId);
-  const selectedAnnotationId = useEditorStore((s) => s.selectedAnnotationId);
+  const selectedAnnotationIds = useEditorStore((s) => s.selectedAnnotationIds);
   const setTool = useEditorStore((s) => s.setTool);
   const setColor = useEditorStore((s) => s.setColor);
   const setScale = useEditorStore((s) => s.setScale);
-  const removeAnnotation = useEditorStore((s) => s.removeAnnotation);
+  const removeAnnotations = useEditorStore((s) => s.removeAnnotations);
   const addDocument = useEditorStore((s) => s.addDocument);
   const reset = useEditorStore((s) => s.reset);
 
@@ -158,10 +158,14 @@ export default function Toolbar({
             />
           </label>
 
-          {selectedAnnotationId && (
+          {selectedAnnotationIds.length > 0 && (
             <TipButton
-              label="Delete annotation"
-              onClick={() => removeAnnotation(selectedAnnotationId)}
+              label={
+                selectedAnnotationIds.length > 1
+                  ? `Delete ${selectedAnnotationIds.length} objects`
+                  : "Delete object"
+              }
+              onClick={() => removeAnnotations(selectedAnnotationIds)}
             >
               <Trash2 className="size-4" />
             </TipButton>

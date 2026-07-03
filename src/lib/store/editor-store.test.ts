@@ -172,7 +172,7 @@ describe("editor-store annotations", () => {
     const pid = get().pages[0].id;
     get().addAnnotation(textAnn("a1", pid));
     expect(get().annotations).toHaveLength(1);
-    expect(get().selectedAnnotationId).toBe("a1");
+    expect(get().selectedAnnotationIds).toEqual(["a1"]);
   });
 
   it("updateAnnotation patches by id", () => {
@@ -189,7 +189,7 @@ describe("editor-store annotations", () => {
     get().addAnnotation(textAnn("a1", pid));
     get().removeAnnotation("a1");
     expect(get().annotations).toEqual([]);
-    expect(get().selectedAnnotationId).toBeNull();
+    expect(get().selectedAnnotationIds).toEqual([]);
   });
 
   it("deleting a page drops that page's annotations", () => {
@@ -220,7 +220,36 @@ describe("editor-store annotations", () => {
     const pid = get().pages[0].id;
     get().addAnnotation(textAnn("a1", pid));
     get().select(pid);
-    expect(get().selectedAnnotationId).toBeNull();
+    expect(get().selectedAnnotationIds).toEqual([]);
+  });
+
+  it("supports multi-select: toggle, select-many, and bulk delete", () => {
+    loadPages(1);
+    const pid = get().pages[0].id;
+    get().addAnnotation(textAnn("a", pid));
+    get().addAnnotation(textAnn("b", pid));
+    get().addAnnotation(textAnn("c", pid));
+
+    // select all three, then toggle one off
+    get().selectAnnotations(["a", "b", "c"]);
+    expect(get().selectedAnnotationIds).toEqual(["a", "b", "c"]);
+    get().toggleAnnotation("b");
+    expect(get().selectedAnnotationIds).toEqual(["a", "c"]);
+    get().toggleAnnotation("b");
+    expect(get().selectedAnnotationIds).toEqual(["a", "c", "b"]);
+
+    // bulk delete removes objects and clears them from the selection
+    get().removeAnnotations(["a", "b"]);
+    expect(get().annotations.map((x) => x.id)).toEqual(["c"]);
+    expect(get().selectedAnnotationIds).toEqual(["c"]);
+  });
+
+  it("selectAnnotation(null) clears the selection", () => {
+    loadPages(1);
+    const pid = get().pages[0].id;
+    get().addAnnotation(textAnn("a", pid));
+    get().selectAnnotation(null);
+    expect(get().selectedAnnotationIds).toEqual([]);
   });
 
   it("reorderAnnotation moves z-order among same-page annotations only", () => {
