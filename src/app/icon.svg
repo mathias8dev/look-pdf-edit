@@ -1,0 +1,33 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3B82F6"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="pencil" x1="308" y1="244" x2="352" y2="414" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FBBF24"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+
+  <!-- App tile -->
+  <rect width="512" height="512" rx="112" fill="url(#tile)"/>
+
+  <!-- Document with a folded corner -->
+  <path d="M172 96 H298 L362 160 V394 a22 22 0 0 1 -22 22 H172 a22 22 0 0 1 -22 -22 V118 a22 22 0 0 1 22 -22 Z" fill="#FFFFFF"/>
+  <path d="M298 96 V160 H362 Z" fill="#BFDBFE"/>
+
+  <!-- Text lines -->
+  <rect x="186" y="212" width="150" height="18" rx="9" fill="#CBD5E1"/>
+  <rect x="186" y="250" width="132" height="18" rx="9" fill="#CBD5E1"/>
+  <rect x="186" y="288" width="96" height="18" rx="9" fill="#E2E8F0"/>
+
+  <!-- Pencil (edit) -->
+  <g transform="rotate(45 330 329)">
+    <rect x="308" y="244" width="44" height="28" rx="10" fill="#FB7185"/>
+    <rect x="308" y="270" width="44" height="12" fill="#94A3B8"/>
+    <rect x="308" y="280" width="44" height="96" fill="url(#pencil)"/>
+    <polygon points="308,376 352,376 330,416" fill="#FDE68A"/>
+    <polygon points="320,400 340,400 330,416" fill="#1F2937"/>
+  </g>
+</svg>
