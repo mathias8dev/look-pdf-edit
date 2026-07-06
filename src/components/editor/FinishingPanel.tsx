@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { useEditorStore } from "@/lib/store/editor-store";
 import type {
+  FinishingScope,
   PageNumberFormat,
   PageNumberPosition,
   WatermarkPosition,
@@ -48,6 +49,11 @@ const WM_POSITIONS: { value: WatermarkPosition; label: string }[] = [
   { value: "bottom-right", label: "Bottom right" },
 ];
 
+const SCOPES: { value: FinishingScope; label: string }[] = [
+  { value: "current", label: "Current page" },
+  { value: "all", label: "All pages" },
+];
+
 interface Props {
   onClose: () => void;
 }
@@ -55,9 +61,13 @@ interface Props {
 /** Right-hand panel for document-wide finishing applied on export. */
 export default function FinishingPanel({ onClose }: Props) {
   const { pageNumbers, watermark, crop } = useEditorStore((s) => s.finishing);
+  const selectedId = useEditorStore((s) => s.selectedId);
   const setPageNumbers = useEditorStore((s) => s.setPageNumbers);
   const setWatermark = useEditorStore((s) => s.setWatermark);
   const setCrop = useEditorStore((s) => s.setCrop);
+
+  const targetFor = (scope: FinishingScope) =>
+    scope === "current" ? selectedId ?? undefined : undefined;
 
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
@@ -128,11 +138,20 @@ export default function FinishingPanel({ onClose }: Props) {
         <Section
           title="Watermark"
           enabled={watermark.enabled}
-          onToggle={(v) => setWatermark({ enabled: v })}
+          onToggle={(v) =>
+            setWatermark({
+              enabled: v,
+              targetPageId: v ? targetFor(watermark.scope ?? "all") : undefined,
+            })
+          }
         >
           <Field label="Text">
             <Input value={watermark.text} onChange={(e) => setWatermark({ text: e.target.value })} />
           </Field>
+          <ScopeField
+            value={watermark.scope ?? "all"}
+            onChange={(scope) => setWatermark({ scope, targetPageId: targetFor(scope) })}
+          />
           <div className="grid grid-cols-2 gap-2">
             <Field label="Size">
               <Num value={watermark.fontSize} min={8} max={200} onChange={(n) => setWatermark({ fontSize: n })} />
@@ -209,8 +228,21 @@ export default function FinishingPanel({ onClose }: Props) {
         </Section>
 
         {/* Crop */}
-        <Section title="Crop" enabled={crop.enabled} onToggle={(v) => setCrop({ enabled: v })}>
+        <Section
+          title="Crop"
+          enabled={crop.enabled}
+          onToggle={(v) =>
+            setCrop({
+              enabled: v,
+              targetPageId: v ? targetFor(crop.scope ?? "all") : undefined,
+            })
+          }
+        >
           <p className="text-xs text-muted-foreground">Margins trimmed from each edge (pt).</p>
+          <ScopeField
+            value={crop.scope ?? "all"}
+            onChange={(scope) => setCrop({ scope, targetPageId: targetFor(scope) })}
+          />
           <div className="grid grid-cols-2 gap-2">
             <Field label="Top">
               <Num value={crop.top} min={0} max={2000} onChange={(n) => setCrop({ top: n })} />
@@ -228,6 +260,31 @@ export default function FinishingPanel({ onClose }: Props) {
         </Section>
       </div>
     </aside>
+  );
+}
+
+function ScopeField({
+  value,
+  onChange,
+}: {
+  value: FinishingScope;
+  onChange: (scope: FinishingScope) => void;
+}) {
+  return (
+    <Field label="Apply to">
+      <Select value={value} onValueChange={(v) => onChange(v as FinishingScope)}>
+        <SelectTrigger>
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SCOPES.map((s) => (
+            <SelectItem key={s.value} value={s.value}>
+              {s.label}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </Field>
   );
 }
 

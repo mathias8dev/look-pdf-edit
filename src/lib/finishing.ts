@@ -1,7 +1,8 @@
-// Document-wide "finishing" applied at export time: page numbers, watermark,
-// and crop. Pure helpers here are unit-tested; the drawing lives in export.ts.
+// Export-time "finishing": page numbers, watermark, and crop. Pure helpers
+// here are unit-tested; the drawing lives in export.ts.
 
 export type PageNumberFormat = "n" | "n-of-N" | "page-n" | "page-n-of-N";
+export type FinishingScope = "current" | "all";
 
 export type PageNumberPosition =
   | "top-left"
@@ -33,6 +34,8 @@ export type WatermarkPosition =
 
 export interface WatermarkSettings {
   enabled: boolean;
+  scope?: FinishingScope;
+  targetPageId?: string;
   text: string;
   fontSize: number;
   color: string;
@@ -48,6 +51,8 @@ export interface WatermarkSettings {
 /** Crop margins in PDF points, trimmed from each edge. */
 export interface CropSettings {
   enabled: boolean;
+  scope?: FinishingScope;
+  targetPageId?: string;
   top: number;
   right: number;
   bottom: number;
@@ -71,6 +76,7 @@ export const DEFAULT_FINISHING: FinishingSettings = {
   },
   watermark: {
     enabled: false,
+    scope: "all",
     text: "DRAFT",
     fontSize: 48,
     color: "#ff0000",
@@ -80,7 +86,7 @@ export const DEFAULT_FINISHING: FinishingSettings = {
     tile: false,
     spacing: 1,
   },
-  crop: { enabled: false, top: 0, right: 0, bottom: 0, left: 0 },
+  crop: { enabled: false, scope: "all", top: 0, right: 0, bottom: 0, left: 0 },
 };
 
 export interface Rect {
@@ -119,6 +125,15 @@ export function contentRect(
   const w = Math.max(1, pageWidth - left - right);
   const h = Math.max(1, pageHeight - top - bottom);
   return { x: left, y: bottom, w, h };
+}
+
+export function appliesToFinishingPage(
+  settings: Pick<WatermarkSettings | CropSettings, "scope" | "targetPageId">,
+  pageId: string,
+  fallbackPageId?: string | null,
+): boolean {
+  if ((settings.scope ?? "all") === "all") return true;
+  return pageId === (settings.targetPageId ?? fallbackPageId);
 }
 
 /** Render the page-number label for a given number/total. */
@@ -305,4 +320,3 @@ export function pageNumberAnchor(
     v === "bottom" ? rect.y + margin : rect.y + rect.h - margin - fontSize;
   return { x, y };
 }
-

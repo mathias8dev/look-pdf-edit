@@ -104,6 +104,7 @@ export default function Toolbar({
     try {
       const bytes = await buildEditedPdf(await buildSources(), pageSubset, annotations, {
         finishing,
+        currentPageId: selectedId,
       });
       downloadBytes(bytes, name);
     } catch (err) {

@@ -11,6 +11,7 @@ import type { Annotation, PageItem, Rotation, TextAnnotation } from "@/types";
 import { hexToRgb01, mapFlatPoints } from "./coords";
 import { standardFontKey, embeddedFontUrl } from "@/lib/fonts";
 import {
+  appliesToFinishingPage,
   contentRect,
   formatPageNumber,
   pageNumberAnchor,
@@ -55,7 +56,11 @@ export async function buildEditedPdf(
   sources: SourceBytes,
   pages: PageItem[],
   annotations: Annotation[] = [],
-  opts: { loadFontBytes?: FontBytesLoader; finishing?: FinishingSettings } = {},
+  opts: {
+    loadFontBytes?: FontBytesLoader;
+    finishing?: FinishingSettings;
+    currentPageId?: string | null;
+  } = {},
 ): Promise<Uint8Array> {
   const out = await PDFDocument.create();
   const loaded = new Map<string, PDFDocument>();
@@ -93,9 +98,19 @@ export async function buildEditedPdf(
 
     if (fin) {
       const { width, height } = page.getSize();
-      const rect = contentRect(width, height, fin.crop);
+      const cropApplies = appliesToFinishingPage(
+        fin.crop,
+        item.id,
+        opts.currentPageId,
+      );
+      const watermarkApplies = appliesToFinishingPage(
+        fin.watermark,
+        item.id,
+        opts.currentPageId,
+      );
+      const rect = contentRect(width, height, cropApplies ? fin.crop : undefined);
 
-      if (fin.watermark.enabled && fin.watermark.text) {
+      if (watermarkApplies && fin.watermark.enabled && fin.watermark.text) {
         drawWatermark(page, await helvFont(), fin.watermark, rect);
       }
       if (fin.pageNumbers.enabled) {
@@ -106,7 +121,7 @@ export async function buildEditedPdf(
         const at = pageNumberAnchor(pn.position, rect, tw, pn.fontSize, pn.margin);
         page.drawText(text, { x: at.x, y: at.y, size: pn.fontSize, font });
       }
-      if (fin.crop.enabled) {
+      if (cropApplies && fin.crop.enabled) {
         page.setCropBox(rect.x, rect.y, rect.w, rect.h);
       }
     }
@@ -285,4 +300,3 @@ export function downloadBytes(bytes: Uint8Array, fileName: string) {
   a.remove();
   URL.revokeObjectURL(url);
 }
-

@@ -56,6 +56,57 @@ describe("finishing on export", () => {
     expect(box).toEqual({ x: 10, y: 40, width: 70, height: 130 });
   });
 
+  it("sets crop only on the current page when scoped to current", async () => {
+    const src = await makePdf(2);
+    const out = await buildEditedPdf(
+      { [DOC]: src },
+      [page("p0", 0), page("p1", 1)],
+      [],
+      {
+        currentPageId: "p1",
+        finishing: finishing({
+          crop: {
+            enabled: true,
+            scope: "current",
+            left: 10,
+            right: 10,
+            top: 20,
+            bottom: 20,
+          },
+        }),
+      },
+    );
+    const doc = await PDFDocument.load(out);
+    expect(doc.getPage(0).getCropBox()).toEqual({ x: 0, y: 0, width: 100, height: 200 });
+    expect(doc.getPage(1).getCropBox()).toEqual({ x: 10, y: 20, width: 90, height: 160 });
+  });
+
+  it("uses the stored crop target page instead of the later selected page", async () => {
+    const src = await makePdf(2);
+    const out = await buildEditedPdf(
+      { [DOC]: src },
+      [page("p0", 0), page("p1", 1)],
+      [],
+      {
+        currentPageId: "p0",
+        finishing: finishing({
+          crop: {
+            enabled: true,
+            scope: "current",
+            targetPageId: "p1",
+            left: 10,
+            right: 10,
+            top: 20,
+            bottom: 20,
+          },
+        }),
+      },
+    );
+    const doc = await PDFDocument.load(out);
+    expect(doc.getPage(0).getCropBox()).toEqual({ x: 0, y: 0, width: 100, height: 200 });
+    expect(doc.getPage(1).getCropBox()).toEqual({ x: 10, y: 20, width: 90, height: 160 });
+  });
+
   it("stamps page numbers onto every page", async () => {
     const src = await makePdf(3);
     const out = await buildEditedPdf(
@@ -77,6 +128,51 @@ describe("finishing on export", () => {
       }),
     });
     expect(decode(out).toLowerCase()).toContain(hex("CONFIDENTIAL"));
+  });
+
+  it("draws a watermark only on the current page when scoped to current", async () => {
+    const src = await makePdf(2);
+    const out = await buildEditedPdf(
+      { [DOC]: src },
+      [page("p0", 0), page("p1", 1)],
+      [],
+      {
+        currentPageId: "p1",
+        finishing: finishing({
+          watermark: {
+            ...DEFAULT_FINISHING.watermark,
+            enabled: true,
+            scope: "current",
+            text: "CONFIDENTIAL",
+          },
+        }),
+      },
+    );
+    const text = decode(out).toLowerCase();
+    expect(text.split(hex("CONFIDENTIAL")).length - 1).toBe(1);
+  });
+
+  it("uses the stored watermark target page instead of the later selected page", async () => {
+    const src = await makePdf(2);
+    const out = await buildEditedPdf(
+      { [DOC]: src },
+      [page("p0", 0), page("p1", 1)],
+      [],
+      {
+        currentPageId: "missing",
+        finishing: finishing({
+          watermark: {
+            ...DEFAULT_FINISHING.watermark,
+            enabled: true,
+            scope: "current",
+            targetPageId: "p1",
+            text: "CONFIDENTIAL",
+          },
+        }),
+      },
+    );
+    const text = decode(out).toLowerCase();
+    expect(text.split(hex("CONFIDENTIAL")).length - 1).toBe(1);
   });
 
   it("repeats the watermark many times when tiled", async () => {

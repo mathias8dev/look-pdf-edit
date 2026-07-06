@@ -42,7 +42,7 @@ interface EditorState {
   /** Edited form-field values, keyed by docId then field name. */
   forms: Record<string, Record<string, FieldValue>>;
 
-  /** Document-wide finishing applied on export (page numbers / watermark / crop). */
+  /** Export finishing: page numbers, watermark, crop, and their scopes. */
   finishing: FinishingSettings;
 
   /** Load the first document, replacing any current session. */

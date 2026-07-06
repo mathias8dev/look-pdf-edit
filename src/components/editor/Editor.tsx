@@ -144,6 +144,7 @@ export default function Editor() {
                     pageWidth={pageSize.width}
                     pageHeight={pageSize.height}
                     scale={scale}
+                    pageId={selected.id}
                     pageIndex={pages.indexOf(selected)}
                     total={pages.length}
                   />
